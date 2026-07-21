@@ -1,0 +1,3440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="RxSign">
+<title>RxSign</title>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAh8pjBee1koGJMYMCtzqAtkAbzHyYQUeo",
+    authDomain: "robinspharmacy-8fe82.firebaseapp.com",
+    projectId: "robinspharmacy-8fe82",
+    storageBucket: "robinspharmacy-8fe82.firebasestorage.app",
+    messagingSenderId: "366873940066",
+    appId: "1:366873940066:web:562a737b85fb254019013b"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // Make db available globally
+  window._db = db;
+  window._auth = auth;
+  window._col = (name) => collection(db, name);
+  window._addDoc = addDoc;
+  window._setDoc = setDoc;
+  window._getDoc = getDoc;
+  window._deleteDoc = deleteDoc;
+  window._doc = doc;
+  window._onSnapshot = onSnapshot;
+  window._query = query;
+  window._orderBy = orderBy;
+
+  // ── Authentication gate ──────────────────────────────────────────────
+  // The app is NOT considered ready until Firebase has given us a signed-in
+  // session. Every Firestore read and write happens after this point, so the
+  // security rules can require request.auth != null and still work.
+  window._fbReady   = false;
+  window._authFailed = false;
+
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      window._uid     = user.uid;
+      window._fbReady = true;
+      console.log('[auth] signed in, uid:', user.uid);
+      document.dispatchEvent(new Event('firebase-ready'));
+    }
+  });
+
+  signInAnonymously(auth).catch((e) => {
+    // Sign-in failed. _fbReady stays false, so the app runs read-only from its
+    // local cache and refuses to write. It will not overwrite server data.
+    window._authFailed = true;
+    console.error('[auth] anonymous sign-in failed:', e && e.code, e && e.message);
+    document.dispatchEvent(new Event('firebase-auth-failed'));
+  });
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; min-height: 100vh; }
+.app { max-width: 420px; margin: 0 auto; background: #fff; min-height: 100vh; padding-bottom: 32px; }
+.header { background: #A22C89; color: #fff; padding: 16px 16px 12px; }
+.header h1 { font-size: 20px; font-weight: 700; }
+.header p { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+.nav { display: flex; background: #fff; border-bottom: 1px solid #e8e8e4; overflow-x: auto; }
+.nav-btn { flex: 1; min-width: 68px; padding: 10px 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; background: transparent; color: #aaa; border-bottom: 2.5px solid transparent; white-space: nowrap; font-family: inherit; }
+.nav-btn.active { color: #A22C89; border-bottom-color: #A22C89; }
+.screen { display: none; padding: 16px; }
+.screen.active { display: block; }
+h2 { font-size: 17px; font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
+.sub { font-size: 12px; color: #999; margin-bottom: 16px; }
+label { font-size: 12px; color: #666; display: block; margin-bottom: 5px; margin-top: 14px; font-weight: 600; letter-spacing: 0.02em; }
+input, select, textarea { width: 100%; font-size: 15px; padding: 11px 13px; border: 1px solid #ddd; border-radius: 10px; background: #fff; color: #1a1a1a; outline: none; font-family: inherit; transition: border-color 0.15s; }
+input:focus, select:focus, textarea:focus { border-color: #A22C89; }
+textarea { resize: none; height: 64px; }
+
+.emp-chip:active { transform: scale(0.97); }
+
+.mht-badge { display: flex; align-items: center; gap: 8px; background: #f0f5fc; border: 1px solid #DFA8D4; border-radius: 10px; padding: 10px 13px; margin-top: 6px; }
+.mht-label { font-size: 13px; color: #A22C89; font-weight: 600; }
+.mht-sub { font-size: 11px; color: #888; margin-top: 1px; }
+
+.autocomplete { position: relative; }
+.ac-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #ddd; border-radius: 12px; z-index: 50; max-height: 260px; overflow-y: auto; box-shadow: 0 6px 24px rgba(0,0,0,0.12); }
+.ac-item { padding: 11px 14px; font-size: 14px; cursor: pointer; color: #1a1a1a; border-bottom: 1px solid #f0f0ec; }
+.ac-item:last-child { border-bottom: none; }
+.ac-item:active { background: #f5f5f0; }
+.ac-item-name { font-weight: 600; }
+.ac-item-team { font-size: 11px; color: #888; margin-top: 2px; }
+.ac-sig-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; margin-top: 3px; }
+.ac-sig-badge.has { background: #EAF3DE; color: #3B6D11; }
+.ac-sig-badge.no { background: #f0f0ec; color: #aaa; }
+
+.sig-wrap { border: 2px dashed #b0c8e8; border-radius: 12px; background: #f8fbff; margin-top: 6px; overflow: hidden; }
+.sig-wrap.has-sig { border-color: #3B6D11; border-style: solid; background: #f8fff8; }
+canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 10px; }
+.sig-saved-banner { background: #EAF3DE; color: #3B6D11; font-size: 13px; font-weight: 600; text-align: center; padding: 10px; }
+.sig-hint { font-size: 11px; color: #bbb; text-align: center; padding: 5px 0 9px; }
+
+.btn { width: 100%; padding: 13px; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px; border: 1.5px solid #ddd; background: #fff; color: #1a1a1a; font-family: inherit; transition: all 0.12s; }
+.btn:active { transform: scale(0.98); }
+.btn.primary { background: #A22C89; color: #fff; border-color: #A22C89; }
+.btn.success { background: #27500A; color: #fff; border-color: #27500A; }
+.btn.danger { background: #A32D2D; color: #fff; border-color: #A32D2D; }
+.btn.ghost { background: transparent; color: #999; font-size: 13px; margin-top: 6px; border: none; font-weight: 500; }
+.btn.sm { padding: 9px 14px; font-size: 13px; width: auto; margin-top: 0; border-radius: 10px; }
+.btn.outline { background: transparent; color: #A22C89; border-color: #A22C89; font-size: 13px; padding: 9px; }
+
+.record { background: #fff; border: 1px solid #e8e8e4; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; }
+.record:active { background: #f5f5f0; }
+.record-name { font-size: 15px; font-weight: 700; color: #1a1a1a; }
+.record-meta { font-size: 12px; color: #999; margin-top: 3px; }
+.record-team { font-size: 12px; color: #A22C89; font-weight: 600; margin-top: 3px; }
+.badge { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 20px; margin-top: 7px; font-weight: 600; }
+.badge.signed { background: #EAF3DE; color: #3B6D11; }
+.badge.saved-sig { background: #F7E8F4; color: #A22C89; }
+.badge.count { background: #F7E8F4; color: #A22C89; }
+.empty { text-align: center; padding: 48px 0; color: #ccc; font-size: 14px; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+.stat { background: #f5f5f0; border-radius: 12px; padding: 14px; }
+.stat-val { font-size: 28px; font-weight: 700; color: #1a1a1a; }
+.stat-lbl { font-size: 12px; color: #999; margin-top: 2px; }
+
+.filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.filter-row input { flex: 1; }
+.filter-row select { width: 130px; }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 100; }
+.modal { background: #fff; border-radius: 20px 20px 0 0; padding: 20px; width: 100%; max-width: 420px; max-height: 88vh; overflow-y: auto; }
+.modal-handle { width: 36px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 16px; }
+.modal h3 { font-size: 17px; font-weight: 700; margin-bottom: 14px; color: #1a1a1a; }
+.detail-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #f0f0ec; font-size: 13px; align-items: flex-start; gap: 12px; }
+.detail-row:last-of-type { border-bottom: none; }
+.detail-key { color: #999; font-weight: 500; white-space: nowrap; }
+.detail-val { color: #1a1a1a; font-weight: 600; text-align: right; }
+.sig-preview { width: 100%; height: 70px; border-radius: 10px; background: #f5f5f0; margin-top: 8px; object-fit: contain; }
+
+.alpha-header { font-size: 11px; font-weight: 700; color: #bbb; letter-spacing: 0.1em; text-transform: uppercase; padding: 14px 0 5px; border-bottom: 1px solid #f0f0ec; margin-bottom: 8px; }
+.patient-row { background: #fff; border: 1px solid #e8e8e4; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+.patient-row-top { display: flex; align-items: flex-start; justify-content: space-between; }
+.patient-row-name { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+.patient-row-team { font-size: 12px; color: #A22C89; font-weight: 600; margin-top: 2px; }
+.patient-sub { font-size: 11px; color: #bbb; margin-top: 2px; }
+.patient-row-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 8px; }
+.icon-btn { padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; border: 1px solid #ddd; background: transparent; color: #555; font-family: inherit; font-weight: 600; }
+.icon-btn.del { color: #A32D2D; border-color: #f09595; }
+
+.add-row { display: flex; gap: 8px; margin-bottom: 5px; align-items: center; }
+.add-row input { flex: 1; margin: 0; }
+.hint { font-size: 11px; color: #bbb; margin-bottom: 14px; }
+.section-card { background: #fafaf8; border: 1px solid #e8e8e4; border-radius: 12px; padding: 14px; margin-bottom: 16px; }
+.section-title { font-size: 12px; font-weight: 700; color: #888; margin-bottom: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.staff-chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.staff-chip { display: flex; align-items: center; gap: 6px; background: #f0f5fc; color: #A22C89; border: 1px solid #DFA8D4; border-radius: 20px; padding: 5px 10px 5px 13px; font-size: 13px; font-weight: 600; }
+.staff-chip button { background: none; border: none; color: #A22C89; cursor: pointer; font-size: 16px; padding: 0; line-height: 1; opacity: 0.6; }
+.msg { margin-top: 10px; font-size: 13px; text-align: center; min-height: 20px; border-radius: 10px; padding: 8px; font-weight: 500; }
+.msg.ok { color: #3B6D11; background: #EAF3DE; }
+.msg.err { color: #A32D2D; background: #FCEBEB; }
+.doc-info { font-size: 11px; color: #888; margin-top: 2px; }
+.blister-active { background: #EAF3DE !important; color: #3B6D11 !important; border-color: #3B6D11 !important; }
+.program-btn { flex:1; padding: 10px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; border: 2px solid #e8e8e4; background: #fafaf8; color: #aaa; font-family: inherit; transition: all 0.15s; }
+.program-btn.active { background: #A22C89; color: #fff; border-color: #A22C89; }
+.history-item { background: #fafaf8; border: 1px solid #e8e8e4; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.history-date { font-size: 12px; font-weight: 700; color: #1a1a1a; }
+.history-emp { font-size: 11px; color: #888; margin-top: 2px; }
+.history-slots { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.history-slot { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+.history-slot.W { background: #EAF3DE; color: #3B6D11; }
+.history-slot.C { background: #E6F1FB; color: #185FA5; }
+.history-slot.M { background: #FCEBEB; color: #A32D2D; }
+.manager-entry-box { background: #FFF9E6; border: 1.5px solid #F5C842; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.manager-entry-title { font-size: 13px; font-weight: 700; color: #B45309; margin-bottom: 8px; }
+.date-picker-wrap { display: flex; gap: 8px; margin-top: 6px; }
+.date-picker-wrap input { flex: 1; font-size: 14px; }
+.med-schedule { background: #fafaf8; border: 1px solid #e8e8e4; border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
+.med-schedule-title { font-size: 12px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+.med-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.med-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.med-slot-label { font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; text-align: center; }
+.med-slot-btns { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.med-btn { width: 100%; padding: 7px 0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1.5px solid #ddd; background: #fff; color: #999; font-family: inherit; transition: all 0.12s; text-align: center; }
+.med-btn.active-w { background: #EAF3DE; color: #3B6D11; border-color: #3B6D11; }
+.med-btn.active-c { background: #E6F1FB; color: #185FA5; border-color: #185FA5; }
+.next-day-wrap { display:none; margin-top:4px; }
+.next-day-wrap.show { display:flex; align-items:center; gap:4px; }
+.next-day-label { font-size:10px; color:#185FA5; font-weight:600; white-space:nowrap; }
+.med-btn.active-m { background: #FCEBEB; color: #A32D2D; border-color: #A32D2D; }
+.controlled-badge { display: inline-block; background: #FFF0E6; color: #C45000; border: 1px solid #F5C09A; border-radius: 20px; font-size: 11px; font-weight: 700; padding: 2px 9px; margin-top: 4px; }
+.clozapine-badge { display: inline-block; background: #FFF9E6; color: #B45309; border: 1.5px solid #F5C842; border-radius: 20px; font-size: 11px; font-weight: 700; padding: 2px 9px; margin-top: 4px; margin-left: 4px; }
+.highrisk-badge { display: inline-block; background: #FFF9E6; color: #B45309; border: 1.5px solid #F5C842; border-radius: 20px; font-size: 11px; font-weight: 700; padding: 2px 9px; margin-top: 4px; margin-left: 4px; }
+.clozapine-warning { background: #FFF9E6; border: 2px solid #F5C842; border-radius: 12px; padding: 12px 14px; margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+.clozapine-warning-icon { font-size: 22px; flex-shrink: 0; }
+.clozapine-warning-text { font-size: 13px; font-weight: 700; color: #B45309; }
+.clozapine-warning-sub { font-size: 11px; color: #92400E; margin-top: 2px; }
+.route-badge { display: inline-block; background: #F7E8F4; color: #A22C89; border: 1px solid #DFA8D4; border-radius: 20px; font-size: 11px; font-weight: 700; padding: 2px 9px; margin-top: 4px; margin-right: 4px; }
+.route-select-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-top: 8px; }
+.route-chip { padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1.5px solid #ddd; background: #fafaf8; color: #555; text-align: center; font-family: inherit; transition: all 0.12s; }
+.route-chip.selected { background: #A22C89; color: #fff; border-color: #A22C89; }
+.missed-report { background: #fff; border: 1px solid #e8e8e4; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.missed-report-header { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+.missed-report-meta { font-size: 12px; color: #999; margin-top: 3px; }
+.missed-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f0f0ec; font-size: 13px; }
+.missed-item:last-child { border-bottom: none; }
+.missed-dot { width: 8px; height: 8px; border-radius: 50%; background: #A32D2D; flex-shrink: 0; }
+.sig-section { background: #fafaf8; border: 1px solid #e8e8e4; border-radius: 12px; padding: 12px; margin-top: 10px; }
+.sig-section-title { font-size: 12px; font-weight: 700; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.sig-section.controlled { background: #FFF8F5; border-color: #F5C09A; }
+.sig-section.controlled .sig-section-title { color: #C45000; }
+.end-shift-btn { background: #A32D2D; color: #fff; border: none; border-radius: 20px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; display:none; }
+.checklist-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; }
+.checklist-item.seen { background: #EAF3DE; }
+.checklist-item.missed { background: #FCEBEB; }
+.checklist-name { font-size: 14px; font-weight: 600; }
+.checklist-status { font-size: 12px; font-weight: 700; }
+.checklist-item.seen .checklist-status { color: #3B6D11; }
+.checklist-item.missed .checklist-status { color: #A32D2D; }
+
+/* PIN LOCK */
+.pin-screen { position: fixed; inset: 0; background: #A22C89; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; padding: 32px; }
+.pin-logo { font-size: 28px; font-weight: 800; color: #ffffff; margin-bottom: 6px; }
+.pin-sub { font-size: 13px; color: #ffffff; margin-bottom: 40px; }
+.pin-dots { display: flex; gap: 16px; margin-bottom: 32px; justify-content: center; width: 100%; }
+.pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #ffffff; background: transparent; transition: background 0.15s; }
+.pin-dot.filled { background: #ffffff; border-color: #ffffff; }
+.pin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 280px; margin: 0 auto; }
+.pin-btn { padding: 18px; border-radius: 14px; font-size: 22px; font-weight: 600; cursor: pointer; border: none; background: #ffffff; color: #A22C89; font-family: inherit; transition: background 0.1s; }
+.pin-btn:active { background: rgba(255,255,255,0.7); }
+.pin-btn.zero { grid-column: 2; }
+.pin-btn.del { background: transparent; font-size: 18px; }
+.pin-error { color: #ffdddd; font-size: 13px; margin-top: 16px; min-height: 20px; font-weight: 500; }
+.pin-hint { color: rgba(255,255,255,0.8); font-size: 11px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="pin-screen" id="pin-screen">
+  <div class="pin-logo">RxSign</div>
+  <div class="pin-sub">Staff only</div>
+
+  <!-- Step 1: Select who you are -->
+
+
+  <!-- Step 2: Enter PIN -->
+  <div id="pin-login-pin" style="width:100%;max-width:300px;display:flex;flex-direction:column;align-items:center;">
+    <p style="color:rgba(255,255,255,0.7);font-size:13px;font-weight:600;text-align:center;margin-bottom:16px;width:100%;" id="pin-login-who">Enter your PIN</p>
+    <div class="pin-dots" id="pin-dots" style="justify-content:center;">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+    <div class="pin-grid">
+      <button class="pin-btn" onclick="pinPress('1')">1</button>
+      <button class="pin-btn" onclick="pinPress('2')">2</button>
+      <button class="pin-btn" onclick="pinPress('3')">3</button>
+      <button class="pin-btn" onclick="pinPress('4')">4</button>
+      <button class="pin-btn" onclick="pinPress('5')">5</button>
+      <button class="pin-btn" onclick="pinPress('6')">6</button>
+      <button class="pin-btn" onclick="pinPress('7')">7</button>
+      <button class="pin-btn" onclick="pinPress('8')">8</button>
+      <button class="pin-btn" onclick="pinPress('9')">9</button>
+      <button class="pin-btn zero" onclick="pinPress('0')">0</button>
+      <button class="pin-btn del" onclick="pinDelete()">⌫</button>
+    </div>
+
+  </div>
+
+  <div class="pin-error" id="pin-error"></div>
+  <div class="pin-hint">Authorized access only</div>
+</div>
+
+<div class="app" id="main-app" style="display:none;">
+  <div class="header">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <h1>RxSign</h1>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span id="sync-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.2);color:rgba(255,255,255,0.8);">Offline</span>
+        <button id="change-pin-btn" onclick="showChangePinModal()" style="display:none;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;cursor:pointer;margin-right:6px;">🔑 My PIN</button>
+        <button id="shift-header-btn" onclick="handleShiftBtn()" style="display:none;margin-right:6px;background:#3B6D11;color:#fff;border:none;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;">▶ Start Shift</button>
+        <button id="logout-btn" onclick="logout()" style="display:none;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;cursor:pointer;">Log out</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;">
+      <p style="font-size:12px;opacity:0.75;">Patient Signature Collection</p>
+      <span id="role-badge" style="display:none;font-size:11px;font-weight:600;color:rgba(255,255,255,0.9);"></span>
+    </div>
+  </div>
+  <div class="nav">
+    <button class="nav-btn" data-tab="collect" onclick="showTab('collect')">Collect</button>
+    <button class="nav-btn" data-tab="staffcompliance" onclick="showTab('staffcompliance')">Compliance</button>
+    <button class="nav-btn" data-tab="missed" id="missed-tab-btn" onclick="showTab('missed')">Missed</button>
+    <button class="nav-btn" data-tab="working" onclick="showTab('working')">Working</button>
+    <button class="nav-btn" data-tab="roster" onclick="showTab('roster')">Roster</button>
+    <button class="nav-btn" data-tab="compliance" onclick="showTab('compliance')">Reports</button>
+    <button class="nav-btn" data-tab="settings" onclick="showTab('settings')">Settings</button>
+  </div>
+
+  <!-- COLLECT -->
+  <div id="screen-collect" class="screen active">
+    <div id="live-clock" style="background:#f0f5fc;border:1px solid #DFA8D4;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div id="clock-date" style="font-size:13px;font-weight:700;color:#A22C89;"></div>
+        <div id="clock-time" style="font-size:20px;font-weight:700;color:#1a1a1a;margin-top:1px;"></div>
+      </div>
+      <div style="font-size:28px;">🕐</div>
+    </div>
+    <h2>New signature</h2>
+    <p class="sub">Select employee and patient to begin</p>
+    <!-- Manager back-entry box (only shown for manager) -->
+    <div id="manager-entry-box" class="manager-entry-box" style="display:none;">
+      <div class="manager-entry-title">📋 Manager Entry — Back-date a visit</div>
+      <label style="margin-top:0;">Select employee</label>
+      <select id="manager-emp-select" style="margin-bottom:8px;"></select>
+      <label>Visit date</label>
+      <div class="date-picker-wrap">
+        <input type="date" id="manager-date" style="flex:2;">
+        <input type="time" id="manager-time" style="flex:1;">
+      </div>
+      <label style="margin-top:10px;">Show in compliance as</label>
+      <select id="manager-flag-select">
+        <option value="flagged">Flagged — Manager entry on behalf of employee</option>
+        <option value="normal">Normal — Appears as regular employee record</option>
+      </select>
+    </div>
+
+    <div id="emp-select-wrap">
+    <label>Who is visiting today?</label>
+    <div class="autocomplete">
+      <input type="text" id="emp-name-input" placeholder="Type your name..." autocomplete="off" oninput="showEmpAC()" onblur="setTimeout(hideEmpAC,200)">
+      <div id="emp-ac-list" class="ac-list" style="display:none;"></div>
+    </div>
+    <div id="emp-selected-badge" style="display:none;margin-top:8px;">
+      <div class="mht-badge" style="background:#EAF3DE;border-color:#3B6D11;">
+        <div>
+          <div class="mht-label" style="color:#3B6D11;" id="emp-selected-name"></div>
+          <div class="mht-sub">Tap to change employee</div>
+        </div>
+        <button onclick="changeEmployee()" style="background:none;border:none;color:#3B6D11;font-size:13px;cursor:pointer;font-weight:600;margin-left:auto;">Switch user</button>
+      </div>
+    </div>
+    <!-- Blister Pack toggle -->
+    </div><!-- /emp-select-wrap -->
+    <div id="blister-pack-wrap" style="display:block;margin-bottom:14px;">
+      <button id="blister-pack-btn" onclick="toggleBlisterPack()" style="width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #e8e8e4;background:#fafaf8;color:#444;font-family:inherit;transition:all 0.15s;">
+        📦 Blister Pack
+      </button>
+      <div id="blister-pack-notice" style="display:none;background:#EAF3DE;border:1.5px solid #3B6D11;border-radius:12px;padding:12px;margin-top:8px;text-align:center;">
+        <div style="font-size:15px;font-weight:700;color:#3B6D11;">📦 Blister Pack Delivered</div>
+        <div style="font-size:12px;color:#3B6D11;margin-top:4px;">No signature required. Tap again to deselect.</div>
+      </div>
+    </div>
+
+    <label>Program</label>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="program-btn active" id="prog-mmp" onclick="selectProgram('MMP')">MMP</button>
+      <button class="program-btn" id="prog-map" onclick="selectProgram('MAP')">MAP</button>
+    </div>
+
+    <label>Patient</label>
+    <div class="autocomplete">
+      <input type="text" id="pat-name" placeholder="Type last name to search..." autocomplete="off" oninput="showAC()" onblur="setTimeout(hideAC,200)">
+      <div id="ac-list" class="ac-list" style="display:none;"></div>
+    </div>
+    <div id="highrisk-warning"></div>
+    <div id="mht-display" style="display:none;">
+      <label>Mental health team</label>
+      <div class="mht-badge">
+        <div>
+          <div class="mht-label" id="mht-name-display"></div>
+          <div class="mht-sub">Auto-filled from patient profile</div>
+        </div>
+      </div>
+    </div>
+
+    <label>Route & visit type</label>
+    <div id="route-selected-badge" style="display:none;margin-bottom:8px;">
+      <div class="mht-badge" style="background:#F7E8F4;border-color:#DFA8D4;">
+        <div>
+          <div class="mht-label" style="color:#A22C89;" id="route-selected-name"></div>
+          <div class="mht-sub">Tap to change route</div>
+        </div>
+        <button onclick="changeRoute()" style="background:none;border:none;color:#A22C89;font-size:13px;cursor:pointer;font-weight:600;margin-left:auto;">Change</button>
+      </div>
+    </div>
+    <div id="route-select-wrap">
+      <div class="route-select-grid" style="margin-bottom:8px;">
+        <button class="route-chip" id="route-btn-r1am" onclick="selectRoute('R1 - AM')">R1 — AM</button>
+        <button class="route-chip" id="route-btn-r1pm" onclick="selectRoute('R1 - PM')">R1 — PM</button>
+        <button class="route-chip" id="route-btn-r2am" onclick="selectRoute('R2 - AM')">R2 — AM</button>
+        <button class="route-chip" id="route-btn-r2pm" onclick="selectRoute('R2 - PM')">R2 — PM</button>
+        <button class="route-chip" id="route-btn-emergency" onclick="selectRoute('Emergency/Extra')" style="grid-column:span 2;">Emergency / Extra visit</button>
+      </div>
+    </div>
+    <div id="med-schedule-wrap">
+    <label>Medication schedule</label>
+    <div class="med-schedule">
+      <div class="med-grid">
+        <div class="med-slot">
+          <div class="med-slot-label">Morning</div>
+          <div class="med-slot-btns">
+            <button class="med-btn" id="med-morning-w" onclick="toggleMed('morning','W')">W</button>
+            <button class="med-btn" id="med-morning-c" onclick="toggleMed('morning','C')">C</button>
+            <button class="med-btn" id="med-morning-m" onclick="toggleMed('morning','M')">M</button>
+          </div>
+          <div class="next-day-wrap" id="nd-morning"><input type="checkbox" id="nd-morning-chk" onchange="toggleNextDay('morning')"><label class="next-day-label" for="nd-morning-chk">Next day</label></div>
+        </div>
+        <div class="med-slot">
+          <div class="med-slot-label">Lunch</div>
+          <div class="med-slot-btns">
+            <button class="med-btn" id="med-lunch-w" onclick="toggleMed('lunch','W')">W</button>
+            <button class="med-btn" id="med-lunch-c" onclick="toggleMed('lunch','C')">C</button>
+            <button class="med-btn" id="med-lunch-m" onclick="toggleMed('lunch','M')">M</button>
+          </div>
+          <div class="next-day-wrap" id="nd-lunch"><input type="checkbox" id="nd-lunch-chk" onchange="toggleNextDay('lunch')"><label class="next-day-label" for="nd-lunch-chk">Next day</label></div>
+        </div>
+        <div class="med-slot">
+          <div class="med-slot-label">Dinner</div>
+          <div class="med-slot-btns">
+            <button class="med-btn" id="med-dinner-w" onclick="toggleMed('dinner','W')">W</button>
+            <button class="med-btn" id="med-dinner-c" onclick="toggleMed('dinner','C')">C</button>
+            <button class="med-btn" id="med-dinner-m" onclick="toggleMed('dinner','M')">M</button>
+          </div>
+          <div class="next-day-wrap" id="nd-dinner"><input type="checkbox" id="nd-dinner-chk" onchange="toggleNextDay('dinner')"><label class="next-day-label" for="nd-dinner-chk">Next day</label></div>
+        </div>
+        <div class="med-slot">
+          <div class="med-slot-label">Bedtime</div>
+          <div class="med-slot-btns">
+            <button class="med-btn" id="med-bedtime-w" onclick="toggleMed('bedtime','W')">W</button>
+            <button class="med-btn" id="med-bedtime-c" onclick="toggleMed('bedtime','C')">C</button>
+            <button class="med-btn" id="med-bedtime-m" onclick="toggleMed('bedtime','M')">M</button>
+          </div>
+          <div class="next-day-wrap" id="nd-bedtime"><input type="checkbox" id="nd-bedtime-chk" onchange="toggleNextDay('bedtime')"><label class="next-day-label" for="nd-bedtime-chk">Next day</label></div>
+        </div>
+        <div class="med-slot">
+          <div class="med-slot-label">PRN</div>
+          <div class="med-slot-btns">
+            <button class="med-btn" id="med-prn-w" onclick="toggleMed('prn','W')">W</button>
+            <button class="med-btn" id="med-prn-c" onclick="toggleMed('prn','C')">C</button>
+            <button class="med-btn" id="med-prn-m" onclick="toggleMed('prn','M')">M</button>
+          </div>
+          <div class="next-day-wrap" id="nd-prn"><input type="checkbox" id="nd-prn-chk" onchange="toggleNextDay('prn')"><label class="next-day-label" for="nd-prn-chk">Next day</label></div>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- /med-schedule-wrap -->
+
+    <label>Notes (optional)</label>
+    <textarea id="notes" placeholder="Any relevant notes..."></textarea>
+    <label>Patient signature</label>
+    <div id="sig-container"></div>
+    <button class="btn primary" style="margin-top:16px;" onclick="saveRecord()">Save & complete ✓</button>
+    <div id="collect-msg" class="msg"></div>
+  </div>
+
+  <!-- ROSTER -->
+  <div id="screen-roster" class="screen">
+    <h2>Patient roster</h2>
+    <p class="sub">98 patients pre-loaded · sorted A–Z by last name</p>
+    <div class="section-card">
+      <div class="section-title">Add new patient</div>
+      <label style="margin-top:0;">Full name</label>
+      <input type="text" id="new-patient" placeholder="First Last (e.g. John Smith)" onkeydown="if(event.key==='Enter')document.getElementById('new-mht').focus()">
+      <label>Mental health team</label>
+      <input type="text" id="new-mht" placeholder="Team name (optional)" onkeydown="if(event.key==='Enter')addPatient()">
+      <button class="btn primary" style="margin-top:10px;" onclick="addPatient()">Add patient</button>
+    </div>
+    <input type="text" id="roster-search" placeholder="Search patients, teams, or doctors..." oninput="renderRoster()" style="margin-bottom:14px;">
+    <div id="roster-list"></div>
+  </div>
+
+  <!-- RECORDS -->
+  <div id="screen-records" class="screen">
+    <h2>Signature records</h2>
+    <p class="sub">Search a patient to view their records and signatures</p>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="program-btn active" id="rec-prog-mmp" onclick="recSelectProgram('MMP')">MMP</button>
+      <button class="program-btn" id="rec-prog-map" onclick="recSelectProgram('MAP')">MAP</button>
+    </div>
+    <div class="filter-row">
+      <input type="text" id="search-input" placeholder="Type patient name..." oninput="">
+    </div>
+    <div id="records-list"><div class="empty" style="color:#bbb;">Type a patient name above to view their records</div></div>
+  </div>
+
+  <!-- COMPLIANCE -->
+  <div id="screen-compliance" class="screen">
+    <h2>Compliance overview</h2>
+    <p class="sub">For pharmacist review · College of Pharmacists</p>
+    <div class="stat-grid" id="stat-grid"></div>
+    <div class="section-card" style="margin-bottom:14px;">
+      <div class="section-title">Export records</div>
+      <p style="font-size:13px;color:#999;margin-bottom:10px;">One page per patient — visit dates and employee initials.</p>
+      <label style="margin-top:0;">Select month to export</label>
+      <select id="export-month" style="margin-bottom:10px;"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn primary" style="margin-top:0;flex:1;" onclick="exportCSV()">⬇ CSV</button>
+        <button class="btn primary" style="margin-top:0;flex:1;background:#27500A;border-color:#27500A;" onclick="exportPDF('regular')">⬇ PDF Regular</button>
+        <button class="btn primary" style="margin-top:0;flex:1;background:#C45000;border-color:#C45000;" onclick="exportPDF('controlled')">⬇ PDF Controlled</button>
+      </div>
+    </div>
+    <input type="text" id="comp-search" placeholder="Search patient or mental health team..." oninput="renderCompliance()" style="margin-bottom:14px;">
+    <div id="comp-list"></div>
+  </div>
+
+  <!-- MISSED MED REPORTS -->
+  <div id="screen-missed" class="screen">
+    <h2>Missed medication reports</h2>
+    <p class="sub">Last 7 days — tap a report to view details</p>
+    <div id="missed-reports-list"></div>
+  </div>
+
+  <!-- STAFF COMPLIANCE -->
+  <div id="screen-staffcompliance" class="screen">
+    <h2>Compliance</h2>
+    <p class="sub">View last 30 days for any patient</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="program-btn active" id="sc-prog-mmp" onclick="scSelectProgram('MMP')">MMP</button>
+      <button class="program-btn" id="sc-prog-map" onclick="scSelectProgram('MAP')">MAP</button>
+    </div>
+    <div class="autocomplete" style="margin-bottom:14px;">
+      <input type="text" id="sc-pat-name" placeholder="Type patient last name..." autocomplete="off" oninput="showSCAC()" onblur="setTimeout(hideSCAC,200)">
+      <div id="sc-ac-list" class="ac-list" style="display:none;"></div>
+    </div>
+    <div id="sc-results"></div>
+  </div>
+
+  <!-- WHO IS WORKING -->
+  <div id="screen-working" class="screen">
+    <h2>Currently Working</h2>
+    <p class="sub">Live shift status for all staff</p>
+    <div id="working-list"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="screen-settings" class="screen">
+    <h2>Settings</h2>
+    <p class="sub">Manage staff and saved signatures</p>
+    <div class="section-card">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Staff members</span>
+        <span id="staff-count" style="font-size:12px;font-weight:500;color:#888;"></span>
+      </div>
+      <div id="staff-list"></div>
+      <div class="add-row">
+        <input type="text" id="new-staff" placeholder="Employee full name" onkeydown="if(event.key==='Enter')addStaff()">
+        <button class="btn sm primary" onclick="addStaff()">Add</button>
+      </div>
+    </div>
+    <div class="section-card">
+      <div class="section-title">Manager PIN</div>
+      <p style="font-size:13px;color:#999;margin-bottom:10px;">Change the manager master PIN (default: 2727)</p>
+      <label style="margin-top:0;">New manager PIN (4 digits)</label>
+      <input type="number" id="new-manager-pin" placeholder="4-digit PIN" style="letter-spacing:8px;font-size:20px;">
+      <button class="btn primary" style="margin-top:10px;" onclick="changeManagerPin()">Save manager PIN</button>
+      <div id="manager-pin-msg" class="msg"></div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title">Office PIN</div>
+      <p style="font-size:13px;color:#1a1a1a;margin-bottom:10px;">Change the Office account PIN (default: 0908)</p>
+      <label style="margin-top:0;">New Office PIN (4 digits)</label>
+      <input type="number" id="new-office-pin" placeholder="4-digit PIN" style="letter-spacing:8px;font-size:20px;">
+      <button class="btn primary" style="margin-top:10px;" onclick="changeOfficePin()">Save Office PIN</button>
+      <div id="office-pin-msg" class="msg"></div>
+    </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title">Saved patient signatures</div>
+      <p style="font-size:13px;color:#999;margin-bottom:10px;">Saved automatically on first visit — reused with one tap on return visits.</p>
+      <div id="saved-sigs-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- END OF SHIFT BUTTON -->
+
+<!-- END OF SHIFT MODAL -->
+<div id="shift-modal" class="modal-backdrop" style="display:none;" onclick="closeShiftModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3>End of Shift</h3>
+
+    <!-- Step 1: Select route -->
+    <div id="shift-route-select">
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">Which route are you completing?</p>
+      <div class="route-select-grid">
+        <button class="route-chip" onclick="selectShiftRoute('R1-AM')">R1 — AM</button>
+        <button class="route-chip" onclick="selectShiftRoute('R1-PM')">R1 — PM</button>
+        <button class="route-chip" onclick="selectShiftRoute('R2-AM')">R2 — AM</button>
+        <button class="route-chip" onclick="selectShiftRoute('R2-PM')">R2 — PM</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Checklist -->
+    <div id="shift-checklist-wrap" style="display:none;">
+      <div id="shift-checklist"></div>
+      <button class="btn danger" id="save-missed-btn" style="margin-top:12px;" onclick="saveMissedReport()">Save missed med report</button>
+    </div>
+
+    <button class="btn ghost" onclick="closeShiftAndReset()">Close</button>
+  </div>
+</div>
+
+<!-- START SHIFT MODAL -->
+<div id="start-shift-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:24px;width:90%;max-width:340px;">
+    <h3 style="margin-bottom:6px;color:#1a1a1a;">Start Shift</h3>
+    <p style="font-size:13px;color:#888;margin-bottom:16px;">Select your route to begin</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+      <button class="route-chip" onclick="selectRouteAndStart('R1 - AM')">R1 — AM</button>
+      <button class="route-chip" onclick="selectRouteAndStart('R1 - PM')">R1 — PM</button>
+      <button class="route-chip" onclick="selectRouteAndStart('R2 - AM')">R2 — AM</button>
+      <button class="route-chip" onclick="selectRouteAndStart('R2 - PM')">R2 — PM</button>
+      <button class="route-chip" onclick="selectRouteAndStart('Emergency/Extra')" style="grid-column:span 2;">Emergency / Extra</button>
+    </div>
+    <button class="btn ghost" onclick="document.getElementById('start-shift-modal').style.display='none'">Cancel</button>
+  </div>
+</div>
+
+<!-- CHANGE PIN MODAL -->
+<div id="change-pin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;" onclick="closeChangePinModal(event)">
+  <div style="background:#fff;border-radius:20px;padding:24px;width:90%;max-width:340px;" onclick="event.stopPropagation()">
+    <h3 style="margin-bottom:16px;color:#1a1a1a;">Change my PIN</h3>
+    <label>Current PIN</label>
+    <input type="number" id="cp-current" placeholder="Enter current PIN" style="letter-spacing:6px;font-size:18px;margin-bottom:12px;">
+    <label>New PIN (4 digits)</label>
+    <input type="number" id="cp-new" placeholder="Enter new PIN" style="letter-spacing:6px;font-size:18px;margin-bottom:6px;">
+    <label>Confirm new PIN</label>
+    <input type="number" id="cp-confirm" placeholder="Confirm new PIN" style="letter-spacing:6px;font-size:18px;margin-bottom:12px;">
+    <div id="cp-msg" class="msg" style="margin-bottom:10px;"></div>
+    <button class="btn primary" onclick="saveMyPin()">Save new PIN</button>
+    <button class="btn ghost" onclick="document.getElementById('change-pin-modal').style.display='none'">Cancel</button>
+  </div>
+</div>
+
+<!-- RECORD DETAIL MODAL -->
+<div id="modal" class="modal-backdrop" style="display:none;" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+    <img id="modal-sig" class="sig-preview" style="display:none;">
+    <button class="btn danger" id="modal-delete-btn" style="margin-top:14px;display:none;">Delete record</button>
+    <button class="btn ghost" onclick="document.getElementById('modal').style.display='none'">Close</button>
+  </div>
+</div>
+
+<!-- EDIT PATIENT MODAL -->
+<div id="edit-modal" class="modal-backdrop" style="display:none;" onclick="closeEditModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3>Edit patient</h3>
+    <label style="margin-top:0;">Full name</label>
+    <input type="text" id="edit-pat-name" placeholder="First Last">
+    <label>Mental health team</label>
+    <input type="text" id="edit-pat-mht" placeholder="Team name">
+
+    <label>Program</label>
+    <div style="display:flex;gap:12px;margin-top:6px;margin-bottom:14px;">
+      <label style="margin:0;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#1a1a1a;">
+        <input type="checkbox" id="edit-prog-mmp" style="width:18px;height:18px;margin:0;"> MMP
+      </label>
+      <label style="margin:0;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#1a1a1a;">
+        <input type="checkbox" id="edit-prog-map" style="width:18px;height:18px;margin:0;"> MAP
+      </label>
+    </div>
+    <p style="font-size:11px;color:#888;margin-top:-10px;margin-bottom:10px;">Patient can be in both programs</p>
+
+    <label>Controlled medications</label>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:6px;margin-bottom:6px;">
+      <label style="margin:0;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#1a1a1a;">
+        <input type="checkbox" id="edit-pat-controlled" style="width:18px;height:18px;margin:0;">
+        Patient has controlled medications
+      </label>
+    </div>
+    <div id="edit-controlled-count-wrap" style="display:none;">
+      <label>Number of controlled medications</label>
+      <input type="number" id="edit-pat-controlled-count" placeholder="e.g. 2" min="1" max="10">
+    </div>
+    <div style="margin-top:14px;">
+      <label style="margin-top:0;margin-bottom:8px;">High-risk medications</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#1a1a1a;margin-bottom:10px;">
+        <input type="checkbox" id="edit-pat-clozapine" style="width:18px;height:18px;margin:0;">
+        ⚠ Clozapine
+      </label>
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Other high-risk medications (comma separated)</label>
+      <input type="text" id="edit-pat-highrisk" placeholder="e.g. Lithium, Warfarin, Methotrexate">
+    </div>
+
+    <input type="hidden" id="edit-pat-original">
+    <button class="btn primary" onclick="saveEditPatient()">Save changes</button>
+    <button class="btn ghost" onclick="document.getElementById('edit-modal').style.display='none'">Cancel</button>
+    <div id="edit-msg" class="msg"></div>
+  </div>
+</div>
+
+<script>
+// ── Pre-loaded patient data from PDF ──
+// Format: {name: "First Last", mht: "", doctor: "Dr. Name", docPhone: ""}
+// Names converted from "Last, First" format in PDF
+const DEFAULT_PATIENTS = []; // patient roster lives in Firestore (app_settings/patients)
+
+// ── PIN-ONLY LOGIN SYSTEM ──
+const MANAGER_PIN_KEY = 'rxsign_manager_pin_v1';
+const EMP_PINS_KEY = 'rxsign_emp_pins_v2';
+let pinEntry = '';
+let currentRole = null;
+let currentUser = '';
+
+// Default employee PINs alphabetical by last name
+const DEFAULT_EMP_PINS = {}; // employee PINs live in Firestore (app_settings/emp_pins)
+
+function getManagerPin(){ return liveManagerPin || localStorage.getItem(MANAGER_PIN_KEY)||'2727'; }
+const OFFICE_PIN_KEY = 'rxsign_office_pin_v1';
+function getOfficePin(){ return liveOfficePin || localStorage.getItem(OFFICE_PIN_KEY)||'0908'; }
+function getEmpPins(){ 
+  try{
+    // Use live Firebase cache if available, otherwise localStorage
+    const source = Object.keys(livePins).length > 0 ? livePins : JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
+    const clean = {};
+    staff.forEach(name=>{
+      clean[name] = source[name] || DEFAULT_EMP_PINS[name] || '1111';
+    });
+    return clean;
+  }catch(e){ return DEFAULT_EMP_PINS; } 
+}
+function getEmpPin(name){ return getEmpPins()[name]||'1234'; }
+function saveEmpPin(name, pin){
+  const saved = JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
+  saved[name]=pin;
+  localStorage.setItem(EMP_PINS_KEY, JSON.stringify(saved));
+  syncDoc('emp_pins', saved, 'PIN for ' + name);
+}
+function saveManagerPin(pin){
+  localStorage.setItem(MANAGER_PIN_KEY, pin);
+  syncDoc('manager_pin', {pin}, 'Manager PIN');
+}
+
+function findUserByPin(pin){
+  // Check manager first
+  if(pin === getManagerPin()) return {role:'manager', name:'Manager'};
+  // Check office PIN
+  if(pin === getOfficePin()) return {role:'office', name:'Office'};
+  // Check all employees — only allow if name is still on active staff list
+  const pins = getEmpPins();
+  for(const [name, empPin] of Object.entries(pins)){
+    if(empPin === pin){
+      // Verify they are still on the active staff list
+      if(staff.includes(name)){
+        return {role:'employee', name};
+      }
+    }
+  }
+  return null;
+}
+
+function pinPress(d){
+  if(pinEntry.length>=4) return;
+  pinEntry+=d;
+  updatePinDots();
+  if(pinEntry.length===4){
+    setTimeout(()=>{
+      const user = findUserByPin(pinEntry);
+      if(user){
+        currentRole=user.role; currentUser=user.name;
+        pinEntry=''; updatePinDots();
+        document.getElementById('pin-screen').style.display='none';
+        document.getElementById('main-app').style.display='block';
+        if(currentRole==='employee'){
+          selectedEmp=currentUser;
+          localStorage.setItem(EMP_KEY, currentUser);
+          initEmpField();
+        }
+        applyRoleAccess();
+      } else {
+        // Wrong PIN - clear dots and show error immediately
+        pinEntry='';
+        updatePinDots();
+        const errEl = document.getElementById('pin-error');
+        errEl.textContent='Incorrect PIN — try again';
+        setTimeout(()=>errEl.textContent='',2000);
+      }
+    },300);
+  }
+}
+
+function showLoginSelect(){
+  document.getElementById('pin-error').textContent='';
+  document.getElementById('pin-login-who').textContent='Enter your PIN';
+  pinEntry=''; updatePinDots();
+}
+
+function applyRoleAccess(){
+  const isManager = currentRole==='manager';
+  const isOffice = currentRole==='office';
+  // Show/hide nav tabs based on role using data-tab attribute
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    const tab = b.getAttribute('data-tab');
+    if(tab==='collect'){ b.style.display=isOffice?'none':'block'; return; }
+    if(tab==='staffcompliance'){ b.style.display='block'; return; }
+    if(tab==='working'){ b.style.display=isManager?'none':'block'; return; }
+    if(tab==='roster'){ b.style.display=isManager?'block':'none'; return; }
+    if(tab==='compliance'){ b.style.display=isManager?'block':'none'; return; }
+    if(tab==='settings'){ b.style.display=isManager?'block':'none'; return; }
+    if(tab==='missed'){ b.style.display='block'; return; }
+  });
+  // Show logout button
+  document.getElementById('logout-btn').style.display='block';
+  document.getElementById('shift-header-btn').style.display='block';
+  // Show change PIN button for employees only
+  const cpBtn = document.getElementById('change-pin-btn');
+  if(cpBtn) cpBtn.style.display = (currentRole==='employee') ? 'block' : 'none';
+  // Update header role badge
+  document.getElementById('role-badge').textContent = isManager ? '👔 Manager' : isOffice ? '🏢 Office' : '👤 '+currentUser;
+  document.getElementById('role-badge').style.display='block';
+  // Always update manager entry box visibility based on current role
+  showManagerEntryBox();
+  // If manager pre-render settings so staff list is ready
+  if(isManager){ 
+    renderSettings(); 
+    populateManagerEmpSelect();
+    showTab('compliance'); 
+  }
+  // If office go to staff compliance view
+  else if(isOffice){ showTab('staffcompliance'); }
+  // If employee, go straight to collect and check shift state
+  else { 
+    showTab('collect');
+    checkEmployeeShiftState();
+  }
+}
+
+async function checkEmployeeShiftState(){
+  if(!currentUser) return;
+  // Wait for Firebase to be ready
+  let attempts = 0;
+  while(!window._fbReady && attempts < 30){
+    await new Promise(r=>setTimeout(r,100));
+    attempts++;
+  }
+  if(!window._fbReady) return;
+  try{
+    const snap = await window._getDoc(window._doc(window._db,'shifts',currentUser));
+    if(snap.exists() && snap.data().active){
+      shiftStarted = true;
+      const savedRoute = snap.data().route;
+      if(savedRoute){
+        selectedRoute = savedRoute;
+        showRouteBadge(savedRoute);
+      }
+      const btn = document.getElementById('shift-header-btn');
+      if(btn){
+        btn.textContent = '⚑ End Shift';
+        btn.style.background = '#A32D2D';
+      }
+      const startTime = new Date(snap.data().startedAt).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+      const msg = document.getElementById('collect-msg');
+      if(msg){ 
+        msg.className='msg ok'; 
+        msg.textContent='Active shift restored · '+(savedRoute||'')+' · Started '+startTime;
+        setTimeout(()=>{ if(msg.textContent.includes('Active shift')) msg.textContent=''; }, 4000);
+      }
+    }
+  }catch(e){ console.log('Shift check error:', e); }
+}
+
+let pendingLogout = false;
+
+function logout(){
+  // If employee has active shift, warn them
+  if(shiftStarted && currentRole==='employee'){
+    const choice = confirm('⚠ You have an active shift!\n\nTap OK to end your shift properly before logging out.\nTap Cancel to log out anyway (shift stays active).');
+    if(choice){
+      // Mark that we should log out after shift is ended
+      pendingLogout = true;
+      showEndShift();
+      return;
+    }
+    // Cancel — log out without ending shift (stays active in Firebase)
+  }
+  doLogout();
+}
+
+function doLogout(){
+  pendingLogout = false;
+  currentRole=null; currentUser=''; selectedEmp='';
+  localStorage.removeItem(EMP_KEY);
+  shiftStarted = false;
+  // Hide all header buttons
+  const shiftBtn2 = document.getElementById('shift-header-btn');
+  if(shiftBtn2){ shiftBtn2.style.display='none'; shiftBtn2.textContent='▶ Start Shift'; shiftBtn2.style.background='#3B6D11'; }
+  const pinBtn2 = document.getElementById('change-pin-btn');
+  if(pinBtn2) pinBtn2.style.display='none';
+  const cpBtn = document.getElementById('change-pin-btn');
+  if(cpBtn) cpBtn.style.display='none';
+  // Explicitly hide manager entry box
+  const mgrBox = document.getElementById('manager-entry-box');
+  if(mgrBox) mgrBox.style.display='none';
+  // Hide manager-only nav tabs immediately
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    const tab = b.getAttribute('data-tab');
+    if(['roster','records','compliance','settings'].includes(tab)){
+      b.style.display='none';
+    }
+  });
+  document.getElementById('main-app').style.display='none';
+  document.getElementById('pin-screen').style.display='flex';
+  showLoginSelect();
+}
+
+function pinDelete(){ if(pinEntry.length>0){ pinEntry=pinEntry.slice(0,-1); updatePinDots(); } }
+function updatePinDots(){ for(let i=0;i<4;i++) document.getElementById('dot-'+i).classList.toggle('filled',i<pinEntry.length); }
+
+const DEFAULT_STAFF = []; // staff roster lives in Firestore (app_settings/staff_list)
+
+const REC_KEY   = 'rxsign_records_v5';
+const PAT_KEY   = 'rxsign_patients_v6';
+const STAFF_KEY = 'rxsign_staff_v7';
+const PSIG_KEY  = 'rxsign_psigs_v5';
+const INIT_KEY  = 'rxsign_initialized_v6';
+
+let records = [], patients = [], staff = [], patientSigs = {};
+// True only after a full, successful Firestore read this session.
+// While false, the app must NEVER write shared data upward — a stale or
+// empty local cache must not be allowed to overwrite good server data.
+let remoteLoadOK = false;
+let sigCanvas, sigCtx, drawing = false, lastX = 0, lastY = 0, hasSig = false;
+let selectedEmp = '', selectedPat = null, usingSavedSig = false;
+
+async function load() {
+  // ── Phase 1: hydrate from the local cache. Read only. No writes upward. ──
+  try { records     = JSON.parse(localStorage.getItem(REC_KEY)  ||'[]'); } catch(e){ records=[]; }
+  try { staff       = JSON.parse(localStorage.getItem(STAFF_KEY)||'[]'); } catch(e){ staff=[]; }
+  try { patients    = JSON.parse(localStorage.getItem(PAT_KEY)  ||'[]'); } catch(e){ patients=[]; }
+  try { patientSigs = JSON.parse(localStorage.getItem(PSIG_KEY) ||'{}'); } catch(e){ patientSigs={}; }
+
+  // Auto-purge records older than 3 months (records are per-device, local only)
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const before = records.length;
+  records = records.filter(r => new Date(r.timestamp) >= threeMonthsAgo);
+  if(records.length !== before) saveRec();
+
+  // ── Phase 2: read the server FIRST. Firestore is the source of truth. ──
+  let staffDocExists = false, patientsDocExists = false;
+  if(window._fbReady){
+    try{
+      const sSnap = await window._getDoc(window._doc(window._db,'app_settings','staff_list'));
+      if(sSnap.exists() && Array.isArray(sSnap.data().staff)){
+        staffDocExists = true;
+        staff = sSnap.data().staff;
+        localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+      }
+      const pSnap = await window._getDoc(window._doc(window._db,'app_settings','patients'));
+      if(pSnap.exists() && Array.isArray(pSnap.data().patients)){
+        patientsDocExists = true;
+        patients = pSnap.data().patients;
+        localStorage.setItem(PAT_KEY, JSON.stringify(patients));
+        localStorage.setItem(INIT_KEY,'1');
+      }
+      const pinSnap = await window._getDoc(window._doc(window._db,'app_settings','emp_pins'));
+      if(pinSnap.exists()){
+        localStorage.setItem(EMP_PINS_KEY, JSON.stringify(pinSnap.data()));
+      }
+      const mgSnap = await window._getDoc(window._doc(window._db,'app_settings','manager_pin'));
+      if(mgSnap.exists() && mgSnap.data().pin){
+        localStorage.setItem(MANAGER_PIN_KEY, mgSnap.data().pin);
+      }
+      const sigSnap = await window._getDoc(window._doc(window._db,'app_settings','patient_sigs'));
+      if(sigSnap.exists() && sigSnap.data().sigs){
+        patientSigs = JSON.parse(sigSnap.data().sigs);
+        localStorage.setItem(PSIG_KEY, JSON.stringify(patientSigs));
+      }
+      const offSnap = await window._getDoc(window._doc(window._db,'app_settings','office_pin'));
+      if(offSnap.exists() && offSnap.data().pin){
+        localStorage.setItem(OFFICE_PIN_KEY, offSnap.data().pin);
+      }
+      // ── One-time PIN migration ────────────────────────────────────────
+      // Copy every current staff member's effective PIN into Firestore so the
+      // hardcoded default PINs can later be removed from the public source.
+      // Idempotent: once Firestore holds them all, this writes nothing.
+      try {
+        const existingPins  = pinSnap.exists() ? pinSnap.data() : {};
+        const effectivePins = getEmpPins();          // Firestore value, else default
+        const mergedPins    = { ...existingPins };
+        let pinsChanged = false;
+        staff.forEach(n => {
+          if (effectivePins[n] && mergedPins[n] !== effectivePins[n]) {
+            mergedPins[n] = effectivePins[n];
+            pinsChanged = true;
+          }
+        });
+        if (pinsChanged) {
+          await window._setDoc(window._doc(window._db,'app_settings','emp_pins'), mergedPins);
+          localStorage.setItem(EMP_PINS_KEY, JSON.stringify(mergedPins));
+          console.log('[pin-migrate] synced', Object.keys(mergedPins).length, 'staff PINs to Firestore');
+        }
+      } catch(e){ console.error('[pin-migrate] failed:', e); }
+
+      remoteLoadOK = true;              // every read succeeded — writes are safe
+      updateSyncBadge('synced');
+    }catch(e){
+      remoteLoadOK = false;             // read failed — go read-only, do not clobber
+      console.error('[load] Firestore read failed, running read-only:', e);
+      updateSyncBadge('error');
+    }
+  } else {
+    remoteLoadOK = false;
+    updateSyncBadge('local');
+  }
+
+  // ── Phase 3: seed defaults ONLY on a genuine first run. ──
+  // Requires a confirmed server read AND a document that truly does not exist.
+  // An empty local cache is NOT evidence that the list is empty.
+  if(remoteLoadOK && !staffDocExists && staff.length===0){
+    staff = [...DEFAULT_STAFF];
+    saveStaff();
+  }
+  if(remoteLoadOK && !patientsDocExists && patients.length===0){
+    patients = DEFAULT_PATIENTS.map(p=>({controlled:false,controlledCount:0,...p}));
+    localStorage.setItem(INIT_KEY,'1');
+    savePat();
+  }
+
+  // Clean up removed staff from PIN storage (local only)
+  try{
+    const savedPins = JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
+    let cleaned = false;
+    ['Kimberly Chin','Robert Milroy'].forEach(name=>{
+      if(savedPins[name]){ delete savedPins[name]; cleaned=true; }
+    });
+    if(cleaned) localStorage.setItem(EMP_PINS_KEY, JSON.stringify(savedPins));
+  }catch(e){}
+
+  // ── Phase 4: schema migrations, persisted only when the server is authoritative ──
+  patients = patients.map(p=> typeof p==='string' ? {name:p,mht:'',doctor:'',docPhone:''} : {...p,doctor:p.doctor||'',docPhone:p.docPhone||''});
+  let migrated = false;
+  patients.forEach(p=>{ if(!p.programs){ p.programs=['MMP']; migrated=true; } });
+  if(migrated && remoteLoadOK) savePat();
+}
+function saveRec()  { localStorage.setItem(REC_KEY,  JSON.stringify(records)); }
+
+// ── Firebase sync ──
+// In-memory PIN cache — updated by real-time listener
+let livePins = {};
+let liveManagerPin = '';
+let liveOfficePin = '';
+
+function startAppSettingsListener(){
+  if(!window._fbReady) return;
+  // Listen for PIN and staff changes in real time
+  window._onSnapshot(window._doc(window._db,'app_settings','emp_pins'), snap=>{
+    if(snap.exists()){
+      const data = snap.data();
+      livePins = data; // Update in-memory cache instantly
+      localStorage.setItem(EMP_PINS_KEY, JSON.stringify(data));
+      console.log('PINs updated from Firebase instantly');
+    }
+  });
+  window._onSnapshot(window._doc(window._db,'app_settings','manager_pin'), snap=>{
+    if(snap.exists() && snap.data().pin){
+      liveManagerPin = snap.data().pin; // Update in-memory
+      localStorage.setItem(MANAGER_PIN_KEY, snap.data().pin);
+    }
+  });
+  window._onSnapshot(window._doc(window._db,'app_settings','office_pin'), snap=>{
+    if(snap.exists() && snap.data().pin){
+      liveOfficePin = snap.data().pin; // Update in-memory
+      localStorage.setItem(OFFICE_PIN_KEY, snap.data().pin);
+    }
+  });
+  window._onSnapshot(window._doc(window._db,'app_settings','staff_list'), snap=>{
+    if(snap.exists() && snap.data().staff?.length){
+      staff = snap.data().staff;
+      localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+    }
+  });
+  window._onSnapshot(window._doc(window._db,'app_settings','patients'), snap=>{
+    if(snap.exists() && snap.data().patients?.length){
+      patients = snap.data().patients;
+      localStorage.setItem(PAT_KEY, JSON.stringify(patients));
+    }
+  });
+}
+let fbUnsubscribe = null;
+let syncStatus = 'local'; // 'local' | 'syncing' | 'synced' | 'error'
+
+function updateSyncBadge(status){
+  syncStatus = status;
+  const badge = document.getElementById('sync-badge');
+  if(!badge) return;
+  const states = {
+    local:   {text:'Offline mode', color:'#999',  bg:'#f0f0ec'},
+    syncing: {text:'Syncing...',   color:'#854F0B', bg:'#FAEEDA'},
+    synced:  {text:'Live ✓',       color:'#3B6D11', bg:'#EAF3DE'},
+    error:   {text:'Sync error',   color:'#A32D2D', bg:'#FCEBEB'}
+  };
+  const s = states[status];
+  badge.textContent = s.text;
+  badge.style.color = s.color;
+  badge.style.background = s.bg;
+}
+
+function initFirebase(){
+  if(!window._fbReady || !window._db) return;
+  updateSyncBadge('syncing');
+  try {
+    // Listen to all patient docs, then fetch their visits
+    fbUnsubscribe = window._onSnapshot(window._col('patients'), async (pSnap) => {
+      updateSyncBadge('syncing');
+      let allRecords = [];
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      
+      // Collect all visits from all patients
+      const promises = pSnap.docs.map(async pDoc => {
+        try {
+          const visitsQ = window._query(
+            window._col('patients/'+pDoc.id+'/visits'),
+            window._orderBy('timestamp','desc')
+          );
+          return new Promise(resolve => {
+            window._onSnapshot(visitsQ, vSnap => {
+              const visits = vSnap.docs
+                .map(d => ({id: d.id, ...d.data()}))
+                .filter(r => new Date(r.timestamp) >= threeMonthsAgo);
+              resolve(visits);
+            });
+          });
+        } catch(e) { return []; }
+      });
+      
+      const results = await Promise.all(promises);
+      allRecords = results.flat().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+      records = allRecords;
+      localStorage.setItem(REC_KEY, JSON.stringify(records));
+      updateSyncBadge('synced');
+      const activeTab = document.querySelector('.screen.active')?.id;
+            if(activeTab === 'screen-compliance'){ renderCompliance(); populateMonthDropdown(); }
+    }, (err) => {
+      console.error('Firebase sync error:', err);
+      updateSyncBadge('error');
+    });
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    updateSyncBadge('error');
+  }
+}
+
+async function saveRecFirebase(rec){
+  if(!window._fbReady) return;
+  try {
+    updateSyncBadge('syncing');
+    // Store under patients/{patientId}/visits/{recordId}
+    const patientId = rec.patient.replace(/[^a-zA-Z0-9]/g,'_');
+    // Update patient info doc
+    await window._setDoc(
+      window._doc(window._db, 'patients', patientId),
+      { name: rec.patient, mht: rec.mht||'', doctor: rec.doctor||'', lastUpdated: rec.timestamp },
+      { merge: true }
+    );
+    // Add visit record
+    await window._setDoc(
+      window._doc(window._db, 'patients', patientId, 'visits', rec.id),
+      rec
+    );
+    updateSyncBadge('synced');
+  } catch(e) {
+    console.error('Save error:', e);
+    updateSyncBadge('error');
+  }
+}
+
+async function deleteRecFirebase(id, patientName){
+  if(!window._fbReady) return;
+  try {
+    const patientId = (patientName||'').replace(/[^a-zA-Z0-9]/g,'_');
+    if(patientId){
+      await window._deleteDoc(window._doc(window._db, 'patients', patientId, 'visits', id));
+    }
+  } catch(e) {
+    console.error('Delete error:', e);
+  }
+}
+// Central write path for shared data. Refuses to write when the server state
+// is unknown, and surfaces failures instead of swallowing them.
+function syncDoc(docName, payload, label){
+  if(!window._fbReady){
+    updateSyncBadge('local');
+    alert('\u26a0\ufe0f Not connected to the server.\n\n"' + label + '" was saved on this device only and will NOT appear on other devices.');
+    return;
+  }
+  if(!remoteLoadOK){
+    updateSyncBadge('error');
+    console.warn('[sync] blocked write to ' + docName + ' - server state unknown');
+    alert('\u26a0\ufe0f Could not reach the server when this app opened, so "' + label + '" was NOT saved.\n\nRefresh the page and try again.');
+    return;
+  }
+  updateSyncBadge('syncing');
+  window._setDoc(window._doc(window._db,'app_settings',docName), payload)
+    .then(()=> updateSyncBadge('synced'))
+    .catch(e=>{
+      updateSyncBadge('error');
+      console.error('[sync] ' + docName + ' failed:', e);
+      alert('\u26a0\ufe0f "' + label + '" did NOT save to the server.\n\n' + (e && e.message ? e.message : e));
+    });
+}
+
+function savePat(){
+  localStorage.setItem(PAT_KEY, JSON.stringify(patients));
+  syncDoc('patients', {patients}, 'Patient list');
+}
+function saveStaff(){
+  localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+  syncDoc('staff_list', {staff}, 'Staff list');
+}
+function savePSigs(){
+  localStorage.setItem(PSIG_KEY, JSON.stringify(patientSigs));
+  syncDoc('patient_sigs', {sigs: JSON.stringify(patientSigs)}, 'Patient signatures');
+}
+
+function lastName(name){ const p=(name||'').trim().split(' '); return p[p.length-1].toLowerCase(); }
+function sortPatients(arr){ return [...arr].sort((a,b)=>lastName(a.name).localeCompare(lastName(b.name))); }
+function formatDate(iso){ const d=new Date(iso); return d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}); }
+function isToday(iso){ return new Date(iso).toDateString()===new Date().toDateString(); }
+function isThisWeek(iso){ return (new Date()-new Date(iso))<7*86400000; }
+function esc(s){ return (s||'').replace(/'/g,"\\'"); }
+
+/* ── Navigation ── */
+function showTab(tab){
+  ['collect','roster','records','compliance','settings','missed','staffcompliance','working'].forEach(t=>{
+    document.getElementById('screen-'+t).classList.toggle('active',t===tab);
+  });
+  // Remove active from all, then add only to visible matching tab
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    b.classList.remove('active');
+  });
+  const activeBtn = document.querySelector('.nav-btn[data-tab="'+tab+'"]');
+  if(activeBtn && activeBtn.style.display !== 'none'){
+    activeBtn.classList.add('active');
+  }
+  if(tab==='compliance'){ renderCompliance(); populateMonthDropdown(); }
+  if(tab==='missed') renderMissedReports();
+  if(tab==='roster') renderRoster();
+  if(tab==='settings') renderSettings();
+  if(tab==='staffcompliance') renderStaffCompliance();
+  if(tab==='working') renderWorking();
+}
+
+/* ── Employee autocomplete ── */
+const EMP_KEY = 'rxsign_last_emp_v1';
+
+function initEmpField(){
+  // Restore last selected employee
+  const last = localStorage.getItem(EMP_KEY)||'';
+  if(last && staff.includes(last)){
+    selectedEmp = last;
+    showEmpBadge(last);
+  }
+}
+
+function showEmpBadge(name){
+  document.getElementById('emp-name-input').style.display='none';
+  const badge = document.getElementById('emp-selected-badge');
+  document.getElementById('emp-selected-name').textContent = name;
+  badge.style.display='block';
+}
+
+function changeEmployee(){
+  // Log out completely — forces PIN re-entry
+  logout();
+}
+
+function showEmpAC(){
+  const q=document.getElementById('emp-name-input').value.trim().toLowerCase();
+  const list=document.getElementById('emp-ac-list');
+  if(!q){ list.style.display='none'; return; }
+  const matches=staff.filter(s=>s.toLowerCase().includes(q));
+  if(!matches.length){ list.style.display='none'; return; }
+  list.innerHTML=matches.map(s=>`<div class="ac-item" onmousedown="selectEmp('${esc(s)}')">
+    <div class="ac-item-name">${s}</div>
+  </div>`).join('');
+  list.style.display='block';
+}
+
+function hideEmpAC(){ document.getElementById('emp-ac-list').style.display='none'; }
+
+function selectEmp(name){
+  selectedEmp=name;
+  localStorage.setItem(EMP_KEY, name);
+  hideEmpAC();
+  showEmpBadge(name);
+}
+
+function renderEmpGrid(){ initEmpField(); }
+
+/* ── Patient autocomplete ── */
+function showAC(){
+  const q=document.getElementById('pat-name').value.trim().toLowerCase();
+  const list=document.getElementById('ac-list');
+  if(!q){ list.style.display='none'; return; }
+  const matches=sortPatients(patients).filter(p=>
+    (p.name.toLowerCase().includes(q)||(p.mht||'').toLowerCase().includes(q)) &&
+    (p.programs||['MMP']).includes(selectedProgram)
+  ).slice(0,10);
+  if(!matches.length){ list.style.display='none'; return; }
+  list.innerHTML=matches.map(p=>{
+    const hasSaved=!!patientSigs[p.name];
+    return `<div class="ac-item" onmousedown="selectPatient('${esc(p.name)}')">
+      <div class="ac-item-name">${p.name}</div>
+      ${p.mht?`<div class="ac-item-team">${p.mht}</div>`:''}
+
+      <span class="ac-sig-badge ${hasSaved?'has':'no'}">${hasSaved?'Sig saved ✓':'No sig yet'}</span>
+    </div>`;
+  }).join('');
+  list.style.display='block';
+}
+function hideAC(){ document.getElementById('ac-list').style.display='none'; }
+
+function selectPatient(name){
+  const pat=patients.find(p=>p.name===name);
+  selectedPat=pat||{name,mht:'',doctor:'',docPhone:''};
+  document.getElementById('pat-name').value=name;
+  hideAC();
+  // High-risk warning banner
+  let warningHtml='';
+  if(selectedPat.clozapine){
+    warningHtml+=`<div class="clozapine-warning">
+      <div class="clozapine-warning-icon">⚠️</div>
+      <div>
+        <div class="clozapine-warning-text">CLOZAPINE PATIENT</div>
+        <div class="clozapine-warning-sub">Extra care required — verify blood monitoring</div>
+      </div>
+    </div>`;
+  }
+  if(selectedPat.highRisk&&selectedPat.highRisk.length>0){
+    selectedPat.highRisk.forEach(med=>{
+      warningHtml+=`<div class="clozapine-warning" style="border-color:#F5A623;">
+        <div class="clozapine-warning-icon">⚠️</div>
+        <div>
+          <div class="clozapine-warning-text">${med.toUpperCase()} PATIENT</div>
+          <div class="clozapine-warning-sub">High-risk medication — handle with care</div>
+        </div>
+      </div>`;
+    });
+  }
+  const warningDiv=document.getElementById('highrisk-warning');
+  if(warningDiv) warningDiv.innerHTML=warningHtml;
+
+  // MHT badge
+  const mhtDiv=document.getElementById('mht-display');
+  if(selectedPat.mht){ document.getElementById('mht-name-display').textContent=selectedPat.mht; mhtDiv.style.display='block'; }
+  else { mhtDiv.style.display='none'; }
+  // Doctor badge
+
+  // Check if shift is started before allowing patient selection
+  if(currentRole==='employee' && !shiftStarted){
+    alert('⚠ Please start your shift first before recording visits.');
+    document.getElementById('pat-name').value='';
+    selectedPat = null;
+    return;
+  }
+  usingSavedSig=!!patientSigs[name];
+  hasSig=usingSavedSig;
+  renderSigContainer();
+  renderPatHistory(name);
+  resetBlisterPack();
+  showTodayVisitBanner(name);
+  // Reset unable to sign
+  const unableChk = document.getElementById('unable-to-sign');
+  if(unableChk) unableChk.checked = false;
+  const reasonWrap = document.getElementById('unable-reason-wrap');
+  if(reasonWrap) reasonWrap.style.display='none';
+}
+
+/* ── Employee Change PIN ── */
+function showChangePinModal(){
+  document.getElementById('cp-current').value='';
+  document.getElementById('cp-new').value='';
+  document.getElementById('cp-confirm').value='';
+  document.getElementById('cp-msg').textContent='';
+  document.getElementById('change-pin-modal').style.display='flex';
+}
+
+function closeChangePinModal(e){
+  if(e.target.id==='change-pin-modal') document.getElementById('change-pin-modal').style.display='none';
+}
+
+function saveMyPin(){
+  const current = document.getElementById('cp-current').value.trim();
+  const newPin = document.getElementById('cp-new').value.trim();
+  const confirm = document.getElementById('cp-confirm').value.trim();
+  const msg = document.getElementById('cp-msg');
+
+  // Verify current PIN
+  const pins = getEmpPins();
+  if(pins[currentUser] !== current){
+    msg.className='msg err'; msg.textContent='Current PIN is incorrect.'; return;
+  }
+  if(!/^\d{4}$/.test(newPin)){
+    msg.className='msg err'; msg.textContent='New PIN must be exactly 4 digits.'; return;
+  }
+  if(newPin !== confirm){
+    msg.className='msg err'; msg.textContent='New PINs do not match.'; return;
+  }
+  if(newPin === getManagerPin() || newPin === getOfficePin()){
+    msg.className='msg err'; msg.textContent='Cannot use that PIN.'; return;
+  }
+  // Check not already used by another employee
+  for(const [name, pin] of Object.entries(pins)){
+    if(pin === newPin && name !== currentUser){
+      msg.className='msg err'; msg.textContent='That PIN is already in use.'; return;
+    }
+  }
+
+  saveEmpPin(currentUser, newPin);
+  msg.className='msg ok'; msg.textContent='✓ PIN changed successfully!';
+  setTimeout(()=>{ document.getElementById('change-pin-modal').style.display='none'; }, 1500);
+}
+
+/* ── Who is Working ── */
+async function renderWorking(){
+  const el = document.getElementById('working-list');
+  if(!el) return;
+  el.innerHTML = '<div class="empty" style="color:#aaa;">Loading...</div>';
+
+  if(!window._fbReady){
+    el.innerHTML = '<div class="empty">Unable to load — no connection</div>';
+    return;
+  }
+
+  try{
+    // Get all shift documents from Firebase
+    const snap = await new Promise((resolve, reject)=>{
+      const timer = setTimeout(()=>reject('timeout'), 5000);
+      const unsub = window._onSnapshot(window._col('shifts'), s=>{
+        clearTimeout(timer); unsub(); resolve(s);
+      });
+    });
+
+    const shifts = {};
+    snap.docs.forEach(d=>{ shifts[d.id] = d.data(); });
+
+    if(!staff.length){ el.innerHTML='<div class="empty">No staff found</div>'; return; }
+
+    // Sort staff - active shifts first, then alphabetical
+    const sorted = [...staff].sort((a,b)=>{
+      const aActive = shifts[a]?.active;
+      const bActive = shifts[b]?.active;
+      if(aActive && !bActive) return -1;
+      if(!aActive && bActive) return 1;
+      return a.localeCompare(b);
+    });
+
+    const activeCount = sorted.filter(s=>shifts[s]?.active).length;
+
+    let html = '';
+    if(activeCount > 0){
+      html += `<div style="background:#EAF3DE;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;">
+        <div style="font-size:14px;font-weight:700;color:#3B6D11;">🟢 ${activeCount} employee${activeCount!==1?'s':''} currently on shift</div>
+      </div>`;
+    } else {
+      html += `<div style="background:#f8f8f5;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;">
+        <div style="font-size:14px;font-weight:700;color:#888;">No active shifts right now</div>
+      </div>`;
+    }
+
+    sorted.forEach(name=>{
+      const shift = shifts[name];
+      const isActive = shift?.active;
+      const initials = name.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase();
+      const startTime = isActive && shift.startedAt ? new Date(shift.startedAt).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}) : '';
+      const firstName = name.split(' ')[0];
+      const lastInitial = name.split(' ').slice(-1)[0][0];
+      const displayName = firstName + ' ' + lastInitial + '.';
+
+      html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;background:#fafaf8;border:1px solid #e8e8e4;border-radius:12px;margin-bottom:8px;">
+        <div style="width:40px;height:40px;border-radius:50%;background:${isActive?'#EAF3DE':'#f0f0ec'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:${isActive?'#3B6D11':'#aaa'};flex-shrink:0;">${initials}</div>
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${displayName}</div>
+          ${isActive ? `<div style="font-size:12px;color:#3B6D11;font-weight:600;">🟢 On shift · ${shift.route||''} · Since ${startTime}</div>` : `<div style="font-size:12px;color:#aaa;">⚪ Off shift</div>`}
+        </div>
+      </div>`;
+    });
+
+    el.innerHTML = html;
+  }catch(e){
+    el.innerHTML = '<div class="empty">Unable to load shift data</div>';
+    console.error('Working tab error:', e);
+  }
+}
+
+/* ── Staff Compliance ── */
+let scSelectedProgram = 'MMP';
+let scSelectedPat = null;
+
+function scSelectProgram(prog){
+  scSelectedProgram = prog;
+  document.getElementById('sc-prog-mmp').className = 'program-btn' + (prog==='MMP'?' active':'');
+  document.getElementById('sc-prog-map').className = 'program-btn' + (prog==='MAP'?' active':'');
+  document.getElementById('sc-pat-name').value = '';
+  document.getElementById('sc-results').innerHTML = '';
+  scSelectedPat = null;
+  hideSCAC();
+}
+
+function showSCAC(){
+  const q = document.getElementById('sc-pat-name').value.trim().toLowerCase();
+  const list = document.getElementById('sc-ac-list');
+  if(q.length < 1){ list.style.display='none'; return; }
+  const matches = sortPatients(patients.filter(p=>
+    p.name.toLowerCase().includes(q) &&
+    (p.programs||['MMP']).includes(scSelectedProgram)
+  )).slice(0,8);
+  if(!matches.length){ list.style.display='none'; return; }
+  list.innerHTML = matches.map(p=>`<div class="ac-item" onmousedown="scSelectPatient('${esc(p.name)}')">${p.name}${p.mht?`<span class='ac-sub'>${p.mht}</span>`:''}</div>`).join('');
+  list.style.display='block';
+}
+
+function hideSCAC(){
+  const list = document.getElementById('sc-ac-list');
+  if(list) list.style.display='none';
+}
+
+function scSelectPatient(name){
+  document.getElementById('sc-pat-name').value = name;
+  hideSCAC();
+  scSelectedPat = patients.find(p=>p.name===name)||{name};
+  renderStaffCompliance();
+}
+
+function renderStaffCompliance(){
+  const el = document.getElementById('sc-results');
+  if(!el) return;
+  if(!scSelectedPat){ el.innerHTML=''; return; }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate()-30);
+  const slots = ['morning','lunch','dinner','bedtime','prn'];
+
+  const patRecs = records
+    .filter(r=>r.patient===scSelectedPat.name && new Date(r.timestamp)>=thirtyDaysAgo)
+    .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+
+  if(!patRecs.length){
+    el.innerHTML=`<div class="empty">No visits in the last 30 days for ${scSelectedPat.name}</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:10px;">${scSelectedPat.name} — Last 30 days (${patRecs.length} visit${patRecs.length!==1?'s':''})</div>
+    ${patRecs.map(r=>{
+      const d = new Date(r.timestamp);
+      const dateStr = d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+      const timeStr = d.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+      const ms = r.medSchedule||{};
+      const nd = r.medNextDay||{};
+      const slotHtml = slots.filter(s=>ms[s]).map(s=>{
+        const label = s.charAt(0).toUpperCase()+s.slice(1);
+        const nextDay = nd[s]?' *':'';
+        const col = ms[s]==='W'?'#3B6D11':ms[s]==='C'?'#185FA5':'#A32D2D';
+        const bg = ms[s]==='W'?'#EAF3DE':ms[s]==='C'?'#E6F1FB':'#FCEBEB';
+        return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${bg};color:${col};">${label}: ${ms[s]}${nextDay}</span>`;
+      }).join(' ');
+      return `<div class="history-item">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div class="history-date">${dateStr} · ${timeStr}</div>
+            <div class="history-emp">👤 ${r.employee||'Unknown'} · ${r.visitType||''}</div>
+          </div>
+          ${r.medSchedule&&Object.values(r.medSchedule).some(v=>v==='M')?'<span style="font-size:11px;font-weight:700;color:#A32D2D;background:#FCEBEB;padding:2px 8px;border-radius:12px;">⚠ Missed</span>':''}
+        </div>
+        ${slotHtml?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${slotHtml}</div>`:''}
+        ${r.notes?`<div style="font-size:11px;color:#666;margin-top:4px;">📝 ${r.notes}</div>`:''}
+      </div>`;
+    }).join('')}
+    <div style="font-size:10px;color:#aaa;margin-top:8px;text-align:center;">* = Next day carry</div>
+  `;
+}
+
+/* ── Today's visit banner ── */
+function showTodayVisitBanner(patName){
+  // Remove existing banner
+  const existing = document.getElementById('today-visit-banner');
+  if(existing) existing.remove();
+
+  if(!shiftStarted) return; // Only show during active shift
+
+  const today = new Date().toDateString();
+  const todayRec = records.find(r=>r.patient===patName && new Date(r.timestamp).toDateString()===today);
+  if(!todayRec) return;
+
+  // Build summary of today's visit
+  const ms = todayRec.medSchedule||{};
+  const slots = ['morning','lunch','dinner','bedtime','prn'];
+  const summary = slots.filter(s=>ms[s]).map(s=>{
+    const v = ms[s];
+    const col = v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
+    return `<span style="font-weight:700;color:${col};">${s.charAt(0).toUpperCase()+s.slice(1)}: ${v}</span>`;
+  }).join(' · ');
+
+  const time = new Date(todayRec.timestamp).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+  const hasMissed = Object.values(ms).some(v=>v==='M');
+
+  const banner = document.createElement('div');
+  banner.id = 'today-visit-banner';
+  banner.innerHTML = `<div style="background:${hasMissed?'#FFF9E6':'#EAF3DE'};border:1.5px solid ${hasMissed?'#F5C842':'#3B6D11'};border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:${hasMissed?'#B45309':'#3B6D11'};">✓ Already visited today at ${time}</div>
+        <div style="font-size:11px;margin-top:4px;">${summary||'Blister Pack'}</div>
+      </div>
+      <button onclick="editTodayVisit('${todayRec.id}')" style="background:#A22C89;border:none;color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;margin-left:8px;">Edit</button>
+    </div>
+  </div>`;
+
+  // Insert before the blister pack wrap
+  const bpWrap = document.getElementById('blister-pack-wrap');
+  if(bpWrap) bpWrap.parentNode.insertBefore(banner, bpWrap);
+}
+
+function editTodayVisit(recId){
+  const rec = records.find(r=>r.id===recId);
+  if(!rec) return;
+  if(!confirm('Edit this visit record? The current record will be deleted and you can re-record it.')) return;
+  
+  // Delete old record
+  records = records.filter(r=>r.id!==recId);
+  saveRec();
+  deleteRecFirebase(recId, rec.patient);
+
+  // Remove banner
+  const banner = document.getElementById('today-visit-banner');
+  if(banner) banner.remove();
+
+  // Pre-fill med schedule from old record
+  const ms = rec.medSchedule||{};
+  const nd = rec.medNextDay||{};
+  medSchedule = {...ms};
+  medNextDay = {...nd};
+  
+  // Update button states
+  ['morning','lunch','dinner','bedtime','prn'].forEach(slot=>{
+    const wBtn=document.getElementById('med-'+slot+'-w');
+    const cBtn=document.getElementById('med-'+slot+'-c');
+    const mBtn=document.getElementById('med-'+slot+'-m');
+    if(wBtn) wBtn.className='med-btn'+(ms[slot]==='W'?' active-w':'');
+    if(cBtn) cBtn.className='med-btn'+(ms[slot]==='C'?' active-c':'');
+    if(mBtn) mBtn.className='med-btn'+(ms[slot]==='M'?' active-m':'');
+    const ndWrap=document.getElementById('nd-'+slot);
+    if(ndWrap) ndWrap.className='next-day-wrap'+(ms[slot]==='C'&&nd[slot]?' show':'');
+    const ndChk=document.getElementById('nd-'+slot+'-chk');
+    if(ndChk) ndChk.checked=nd[slot]||false;
+  });
+
+  checkMissedState();
+
+  const msg = document.getElementById('collect-msg');
+  if(msg){ msg.className='msg ok'; msg.textContent='Record deleted — update and save again'; }
+}
+
+/* ── Unable to sign ── */
+function toggleUnableToSign(){
+  const chk = document.getElementById('unable-to-sign');
+  const sigSections = document.querySelectorAll('.sig-section');
+  const reasonWrap = document.getElementById('unable-reason-wrap');
+  
+  if(chk && chk.checked){
+    // Hide signature pads, show reason field
+    sigSections.forEach(s=>s.style.display='none');
+    if(reasonWrap) reasonWrap.style.display='block';
+    hasSig = true; // Allow saving without signature
+  } else {
+    // Show signature pads, hide reason
+    sigSections.forEach(s=>s.style.display='block');
+    if(reasonWrap) reasonWrap.style.display='none';
+    hasSig = false;
+  }
+}
+
+function getUnableToSignReason(){
+  const chk = document.getElementById('unable-to-sign');
+  if(chk && chk.checked){
+    const reason = document.getElementById('unable-reason')?.value.trim();
+    return reason || 'Patient unable to sign';
+  }
+  return null;
+}
+
+/* ── Blister Pack ── */
+function toggleBlisterPack(){
+  isBlisterPack = !isBlisterPack;
+  const btn = document.getElementById('blister-pack-btn');
+  const notice = document.getElementById('blister-pack-notice');
+  const medSchedule_wrap = document.getElementById('med-schedule-wrap');
+  const sigContainer = document.getElementById('sig-container');
+  const missedNotice = document.getElementById('missed-notice');
+  const carryNote = document.getElementById('carry-note');
+
+  const neutral = 'width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #e8e8e4;background:#fafaf8;color:#444;font-family:inherit;transition:all 0.15s;';
+  const active = 'width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #3B6D11;background:#EAF3DE;color:#3B6D11;font-family:inherit;transition:all 0.15s;';
+
+  if(isBlisterPack){
+    btn.className = '';
+    btn.style.cssText = active;
+    if(notice) notice.style.display='block';
+    if(medSchedule_wrap) medSchedule_wrap.style.display='none';
+    if(sigContainer) sigContainer.style.display='none';
+    if(missedNotice) missedNotice.remove();
+    if(carryNote) carryNote.remove();
+    resetMedScheduleOnly();
+    hasSig = true;
+  } else {
+    btn.className = '';
+    btn.style.cssText = neutral;
+    if(notice) notice.style.display='none';
+    if(medSchedule_wrap) medSchedule_wrap.style.display='block';
+    if(sigContainer) sigContainer.style.display='block';
+    hasSig = false;
+  }
+}
+
+function resetBlisterPack(){
+  isBlisterPack = false;
+  const btn = document.getElementById('blister-pack-btn');
+  const notice = document.getElementById('blister-pack-notice');
+  const wrap = document.getElementById('blister-pack-wrap');
+  if(btn){ btn.className=''; btn.style.cssText='width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #e8e8e4;background:#fafaf8;color:#444;font-family:inherit;transition:all 0.15s;'; }
+  if(notice) notice.style.display='none';
+  // wrap stays visible
+}
+
+function resetMedScheduleOnly(){
+  medSchedule = {};
+  medNextDay = {};
+  MED_SLOTS.forEach(slot=>{
+    const wBtn=document.getElementById('med-'+slot+'-w');
+    const cBtn=document.getElementById('med-'+slot+'-c');
+    const mBtn=document.getElementById('med-'+slot+'-m');
+    if(wBtn) wBtn.className='med-btn';
+    if(cBtn) cBtn.className='med-btn';
+    if(mBtn) mBtn.className='med-btn';
+    const ndWrap=document.getElementById('nd-'+slot);
+    if(ndWrap) ndWrap.className='next-day-wrap';
+    const ndChk=document.getElementById('nd-'+slot+'-chk');
+    if(ndChk) ndChk.checked=false;
+  });
+}
+
+/* ── Shift management ── */
+function handleShiftBtn(){
+  if(!shiftStarted){
+    // Start shift - show route selector
+    showStartShift();
+  } else {
+    // End shift
+    showEndShift();
+  }
+}
+
+function showStartShift(){
+  if(shiftStarted){
+    alert('You already have an active shift. Please end your current shift first.');
+    return;
+  }
+  // If route already selected just start
+  if(selectedRoute){
+    startShift();
+    return;
+  }
+  // Show route selection modal
+  document.getElementById('start-shift-modal').style.display='flex';
+}
+
+function startShift(){
+  if(!selectedRoute){ alert('Please select a route first.'); return; }
+  shiftStarted = true;
+  // Save to Firebase
+  if(window._fbReady){
+    window._setDoc(window._doc(window._db,'shifts',currentUser), {
+      active: true,
+      route: selectedRoute,
+      startedAt: new Date().toISOString(),
+      employee: currentUser
+    }).catch(e=>console.error('Shift save error:',e));
+  }
+  const btn = document.getElementById('shift-header-btn');
+  if(btn){
+    btn.textContent = '⚑ End Shift';
+    btn.style.background = '#A32D2D';
+  }
+  document.getElementById('start-shift-modal').style.display='none';
+}
+
+function resetShiftBtn(){
+  shiftStarted = false;
+  // Clear from Firebase
+  if(window._fbReady && currentUser){
+    window._setDoc(window._doc(window._db,'shifts',currentUser), {
+      active: false,
+      endedAt: new Date().toISOString(),
+      employee: currentUser
+    }).catch(e=>console.error('Shift clear error:',e));
+  }
+  const btn = document.getElementById('shift-header-btn');
+  if(btn){
+    btn.textContent = '▶ Start Shift';
+    btn.style.background = '#3B6D11';
+  }
+}
+
+/* ── Program selection ── */
+function selectProgram(prog){
+  selectedProgram = prog;
+  document.getElementById('prog-mmp').className = 'program-btn' + (prog==='MMP'?' active':'');
+  document.getElementById('prog-map').className = 'program-btn' + (prog==='MAP'?' active':'');
+  // Clear current patient selection
+  document.getElementById('pat-name').value='';
+  selectedPat = null;
+  hideAC();
+  resetMedSchedule();
+  hidePatHistory();
+  document.getElementById('mht-display').style.display='none';
+  document.getElementById('highrisk-warning').innerHTML='';
+  document.getElementById('sig-container').innerHTML='';
+  document.getElementById('pat-history').style.display='none';
+}
+
+/* ── Patient history ── */
+function renderPatHistory(patName){
+  const histDiv = document.getElementById('pat-history');
+  const histList = document.getElementById('pat-history-list');
+  if(!histDiv || !histList) return;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate()-30);
+
+  const patRecs = records
+    .filter(r=>r.patient===patName && new Date(r.timestamp)>=thirtyDaysAgo)
+    .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+
+  if(!patRecs.length){
+    histDiv.style.display='block';
+    histList.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0;">No visits in the last 30 days</div>';
+    return;
+  }
+
+  const slots = ['morning','lunch','dinner','bedtime','prn'];
+  histList.innerHTML = patRecs.map(r=>{
+    const d = new Date(r.timestamp);
+    const dateStr = d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+    const timeStr = d.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+    const ms = r.medSchedule||{};
+    const slotHtml = slots.filter(s=>ms[s]).map(s=>{
+      const nd = (r.medNextDay||{})[s] ? '*' : '';
+      return `<span class="history-slot ${ms[s]}">${s.charAt(0).toUpperCase()+s.slice(1)}: ${ms[s]}${nd}</span>`;
+    }).join('');
+    return `<div class="history-item">
+      <div class="history-date">${dateStr} · ${timeStr} · ${r.visitType||''}</div>
+      <div class="history-emp">👤 ${r.employee||'Unknown'}</div>
+      ${slotHtml?`<div class="history-slots">${slotHtml}</div>`:''}
+      ${r.notes?`<div style="font-size:11px;color:#666;margin-top:4px;">📝 ${r.notes}</div>`:''}
+    </div>`;
+  }).join('');
+
+  histDiv.style.display='block';
+}
+
+function togglePatHistory(){
+  const list = document.getElementById('pat-history-list');
+  const toggle = document.getElementById('pat-history-toggle');
+  if(!list) return;
+  const isHidden = list.style.display==='none';
+  list.style.display = isHidden ? 'block' : 'none';
+  toggle.textContent = isHidden ? 'Hide ▲' : 'Show ▼';
+}
+
+/* ── Manager back-entry ── */
+function showManagerEntryBox(){
+  const box = document.getElementById('manager-entry-box');
+  if(box){
+    box.style.display = currentRole==='manager' ? 'block' : 'none';
+  }
+  // Hide the emp selection section for manager - they use the dropdown above
+  const empWrap = document.getElementById('emp-select-wrap');
+  if(empWrap){
+    empWrap.style.display = currentRole==='manager' ? 'none' : 'block';
+  }
+  // Set default date to today and time to now
+  const now = new Date();
+  const dateEl = document.getElementById('manager-date');
+  const timeEl = document.getElementById('manager-time');
+  if(dateEl){
+    dateEl.value = now.toISOString().split('T')[0];
+    // Set min to 30 days ago, max to today
+    const thirtyAgo = new Date(); thirtyAgo.setDate(thirtyAgo.getDate()-30);
+    dateEl.min = thirtyAgo.toISOString().split('T')[0];
+    dateEl.max = now.toISOString().split('T')[0];
+  }
+  if(timeEl){
+    timeEl.value = now.toTimeString().slice(0,5);
+  }
+}
+
+function populateManagerEmpSelect(){
+  const sel = document.getElementById('manager-emp-select');
+  if(!sel) return;
+  sel.innerHTML = staff.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+function getRecordTimestamp(){
+  // If manager, use the selected date/time. Otherwise use now.
+  if(currentRole==='manager'){
+    const dateVal = document.getElementById('manager-date')?.value;
+    const timeVal = document.getElementById('manager-time')?.value || '12:00';
+    if(dateVal){
+      return new Date(dateVal + 'T' + timeVal + ':00').toISOString();
+    }
+  }
+  return new Date().toISOString();
+}
+
+function getRecordEmployee(){
+  if(currentRole==='manager'){
+    const sel = document.getElementById('manager-emp-select');
+    return sel?.value || currentUser;
+  }
+  return selectedEmp;
+}
+
+function isManagerFlagged(){
+  if(currentRole!=='manager') return false;
+  const sel = document.getElementById('manager-flag-select');
+  return sel?.value === 'flagged';
+}
+
+/* ── Route persistence ── */
+const ROUTE_KEY = 'rxsign_selected_route_v1';
+let selectedRoute = '';
+let shiftStarted = false;
+let selectedProgram = 'MMP'; // default to MMP
+let isBlisterPack = false;
+
+function initRoute(){
+  const saved = localStorage.getItem(ROUTE_KEY)||'';
+  if(saved){ selectedRoute=saved; showRouteBadge(saved); }
+}
+
+function showRouteBadge(route){
+  document.getElementById('route-select-wrap').style.display='none';
+  document.getElementById('route-selected-badge').style.display='block';
+  document.getElementById('route-selected-name').textContent=route;
+}
+
+function selectRouteAndStart(route){
+  selectRoute(route);
+  startShift();
+}
+
+function selectRoute(route){
+  selectedRoute=route;
+  localStorage.setItem(ROUTE_KEY, route);
+  showRouteBadge(route);
+}
+
+function changeRoute(){
+  document.getElementById('route-selected-badge').style.display='none';
+  document.getElementById('route-select-wrap').style.display='block';
+}
+
+/* ── Medication schedule state ── */
+let medSchedule = {}; // {morning: 'W'|'C'|'M'|null, ...}
+let medNextDay = {};  // {morning: true|false, ...} for C slots
+const MED_SLOTS = ['morning','lunch','dinner','bedtime','prn'];
+
+function toggleMed(slot, val){
+  // Toggle — if already selected deselect it
+  medSchedule[slot] = medSchedule[slot]===val ? null : val;
+  // If switching away from C, clear next day
+  if(medSchedule[slot]!=='C'){
+    medNextDay[slot] = false;
+    const chk = document.getElementById('nd-'+slot+'-chk');
+    if(chk) chk.checked = false;
+  }
+  // Update all three button styles for this slot
+  const wBtn = document.getElementById('med-'+slot+'-w');
+  const cBtn = document.getElementById('med-'+slot+'-c');
+  const mBtn = document.getElementById('med-'+slot+'-m');
+  if(wBtn) wBtn.className = 'med-btn' + (medSchedule[slot]==='W'?' active-w':'');
+  if(cBtn) cBtn.className = 'med-btn' + (medSchedule[slot]==='C'?' active-c':'');
+  if(mBtn) mBtn.className = 'med-btn' + (medSchedule[slot]==='M'?' active-m':'');
+  // Show/hide next day checkbox — only when C is selected
+  const ndWrap = document.getElementById('nd-'+slot);
+  if(ndWrap) ndWrap.className = 'next-day-wrap' + (medSchedule[slot]==='C'?' show':'');
+  // Update signature state
+  checkMissedState();
+}
+
+function toggleNextDay(slot){
+  const chk = document.getElementById('nd-'+slot+'-chk');
+  medNextDay[slot] = chk ? chk.checked : false;
+}
+
+function checkMissedState(){
+  const anyMissed = Object.values(medSchedule).some(v=>v==='M');
+  const anyWitnessed = Object.values(medSchedule).some(v=>v==='W');
+  const onlyCarried = !anyMissed && !anyWitnessed && Object.values(medSchedule).some(v=>v==='C');
+  const sigContainer = document.getElementById('sig-container');
+
+  // Remove any existing missed notice first
+  const existingNotice = document.getElementById('missed-notice');
+  if(existingNotice) existingNotice.remove();
+
+  if(anyMissed && !anyWitnessed){
+    // ALL selections are M (no W) — hide signature, show missed notice
+    if(sigContainer) sigContainer.style.display='none';
+    document.querySelectorAll('.sig-section').forEach(s=>s.style.display='none');
+    const notice = document.createElement('div');
+    notice.id = 'missed-notice';
+    notice.innerHTML = `<div style="background:#FCEBEB;border:1.5px solid #f09595;border-radius:12px;padding:14px;margin-top:10px;text-align:center;">
+      <div style="font-size:15px;font-weight:700;color:#A32D2D;">✗ Medication Missed</div>
+      <div style="font-size:12px;color:#c0392b;margin-top:4px;">No signature required for missed medications.<br>This visit will appear in the missed med report.</div>
+    </div>`;
+    if(sigContainer) sigContainer.parentNode.insertBefore(notice, sigContainer.nextSibling);
+    hasSig = true; // Allow saving without signature
+  } else if(onlyCarried){
+    // Only C selected — no signature needed, show carried notice
+    if(sigContainer) sigContainer.style.display='none';
+    document.querySelectorAll('.sig-section').forEach(s=>s.style.display='none');
+    const notice = document.createElement('div');
+    notice.id = 'missed-notice';
+    notice.innerHTML = `<div style="background:#E6F1FB;border:1.5px solid #A22C89;border-radius:12px;padding:14px;margin-top:10px;text-align:center;">
+      <div style="font-size:15px;font-weight:700;color:#A22C89;">Meds Carried</div>
+      <div style="font-size:12px;color:#A22C89;margin-top:4px;">No signature required for carried medications.</div>
+    </div>`;
+    if(sigContainer) sigContainer.parentNode.insertBefore(notice, sigContainer.nextSibling);
+    hasSig = true; // Allow saving without signature
+  } else {
+    // W is selected (possibly with C or M) — show signature
+    if(sigContainer) sigContainer.style.display='block';
+    document.querySelectorAll('.sig-section').forEach(s=>s.style.display='block');
+    // Only reset hasSig if nothing selected at all
+    if(!Object.values(medSchedule).some(v=>v)){
+      hasSig = false;
+    }
+    // Show carry summary if any C slots selected alongside W
+    const carriedSlots = Object.entries(medSchedule)
+      .filter(([k,v])=>v==='C')
+      .map(([k])=>k.charAt(0).toUpperCase()+k.slice(1))
+      .join(', ');
+    const existingCarryNote = document.getElementById('carry-note');
+    if(existingCarryNote) existingCarryNote.remove();
+    if(carriedSlots){
+      const carryNote = document.createElement('div');
+      carryNote.id = 'carry-note';
+      carryNote.innerHTML = `<div style="background:#E6F1FB;border:1.5px solid #A22C89;border-radius:10px;padding:10px 14px;margin-top:8px;display:flex;align-items:center;gap:8px;">
+        <div style="font-size:18px;">💊</div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#A22C89;">Carried: ${carriedSlots}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">Meds handed to patient — no signature needed for these slots</div>
+        </div>
+      </div>`;
+      if(sigContainer) sigContainer.parentNode.insertBefore(carryNote, sigContainer);
+    }
+  }
+}
+
+function hidePatHistory(){
+  const histDiv = document.getElementById('pat-history');
+  if(histDiv) histDiv.style.display='none';
+  const histList = document.getElementById('pat-history-list');
+  if(histList){ histList.style.display='none'; histList.innerHTML=''; }
+  const toggle = document.getElementById('pat-history-toggle');
+  if(toggle) toggle.textContent='Show ▼';
+}
+
+function resetMedSchedule(){
+  medSchedule = {};
+  medNextDay = {};
+  MED_SLOTS.forEach(slot=>{
+    const wBtn=document.getElementById('med-'+slot+'-w');
+    const cBtn=document.getElementById('med-'+slot+'-c');
+    const mBtn=document.getElementById('med-'+slot+'-m');
+    if(wBtn) wBtn.className='med-btn';
+    if(cBtn) cBtn.className='med-btn';
+    if(mBtn) mBtn.className='med-btn';
+    const ndWrap=document.getElementById('nd-'+slot);
+    if(ndWrap) ndWrap.className='next-day-wrap';
+    const ndChk=document.getElementById('nd-'+slot+'-chk');
+    if(ndChk) ndChk.checked=false;
+  });
+  // Restore sig container and remove missed notice
+  const sigContainer = document.getElementById('sig-container');
+  if(sigContainer) sigContainer.style.display='block';
+  const missedNotice = document.getElementById('missed-notice');
+  if(missedNotice) missedNotice.remove();
+  const carryNote = document.getElementById('carry-note');
+  if(carryNote) carryNote.remove();
+  hidePatHistory();
+  resetBlisterPack();
+  const todayBanner = document.getElementById('today-visit-banner');
+  if(todayBanner) todayBanner.remove();
+}
+
+function getMedScheduleSummary(){
+  const parts=[];
+  MED_SLOTS.forEach(slot=>{
+    if(medSchedule[slot]) parts.push(slot.charAt(0).toUpperCase()+slot.slice(1)+':'+medSchedule[slot]);
+  });
+  return parts.join(', ')||'';
+}
+
+/* ── Multi-signature state ── */
+let signatures = {}; // {key: dataURL} e.g. {'regular': '...', 'controlled_0': '...'}
+let sigCanvases = {}; // {key: canvas}
+let sigDrawing = false;
+
+/* ── Signature ── */
+function renderSigContainer(){
+  if(!selectedPat){ document.getElementById('sig-container').innerHTML=''; return; }
+  const c=document.getElementById('sig-container');
+  const isControlled=selectedPat.controlled&&selectedPat.controlledCount>0;
+  const hasSaved=!!patientSigs[selectedPat.name];
+  signatures={}; sigCanvases={};
+
+  let html='';
+
+  // Regular meds signature
+  html+=`<div class="sig-section">
+    <div class="sig-section-title">Regular Medications Signature</div>
+    ${hasSaved?`<button class="btn success" style="margin-bottom:8px;" id="use-saved-btn" onclick="useSavedSig()">✓ Use ${selectedPat.name}'s saved signature</button>`:''}
+    <div id="sig-regular-wrap" class="${hasSaved?'sig-wrap has-sig':'sig-wrap'}" style="${hasSaved?'display:none;':''}">
+      <canvas id="sig-canvas-regular"></canvas>
+      <p class="sig-hint">Patient signs here with finger</p>
+    </div>
+    ${hasSaved?`<img id="sig-saved-preview" src="${patientSigs[selectedPat.name]}" style="width:100%;height:70px;object-fit:contain;background:#f8fff8;border-radius:10px;margin-top:6px;">`:''}
+    <button class="btn ghost" onclick="clearOneSig('regular')" style="${hasSaved?'display:none;':''}">↺ Clear</button>
+  </div>`;
+
+  // Controlled med signatures
+  if(isControlled){
+    for(let i=0;i<selectedPat.controlledCount;i++){
+      html+=`<div class="sig-section controlled">
+        <div class="sig-section-title">⚠ Controlled Medication ${selectedPat.controlledCount>1?'#'+(i+1):''} Signature</div>
+        <div class="sig-wrap" id="sig-controlled-wrap-${i}">
+          <canvas id="sig-canvas-controlled-${i}"></canvas>
+          <p class="sig-hint">Patient signs for controlled med</p>
+        </div>
+        <button class="btn ghost" onclick="clearOneSig('controlled_${i}')">↺ Clear</button>
+      </div>`;
+    }
+  }
+
+  // Add unable to sign checkbox
+  html += `<div style="margin-top:12px;padding:10px 12px;background:#fafaf8;border:1px solid #e8e8e4;border-radius:10px;">
+    <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:#1a1a1a;cursor:pointer;">
+      <input type="checkbox" id="unable-to-sign" onchange="toggleUnableToSign()" style="width:18px;height:18px;margin:0;">
+      Patient unable to sign
+    </label>
+    <div id="unable-reason-wrap" style="display:none;margin-top:8px;">
+      <input type="text" id="unable-reason" placeholder="Reason (e.g. hand injury, refused, unconscious...)" style="width:100%;padding:8px 12px;border:1px solid #e8e8e4;border-radius:8px;font-size:13px;font-family:inherit;">
+    </div>
+  </div>`;
+
+  c.innerHTML=html;
+  hasSig=hasSaved;
+  usingSavedSig=hasSaved;
+
+  // Init regular canvas if not using saved
+  if(!hasSaved) initOneCanvas('regular','sig-canvas-regular');
+  // Init controlled canvases
+  if(isControlled){
+    for(let i=0;i<selectedPat.controlledCount;i++){
+      initOneCanvas('controlled_'+i,'sig-canvas-controlled-'+i);
+    }
+  }
+}
+
+function useSavedSig(){
+  usingSavedSig=true; hasSig=true;
+  document.getElementById('use-saved-btn').style.display='none';
+  document.getElementById('sig-regular-wrap').style.display='none';
+  const preview=document.getElementById('sig-saved-preview');
+  if(preview) preview.style.display='block';
+}
+
+function switchToFresh(){
+  usingSavedSig=false; hasSig=false;
+  renderSigContainer();
+}
+
+function useSaved(){ usingSavedSig=true; hasSig=true; renderSigContainer(); }
+
+function clearOneSig(key){
+  if(sigCanvases[key]){
+    const ctx=sigCanvases[key].getContext('2d');
+    ctx.clearRect(0,0,sigCanvases[key].width,sigCanvases[key].height);
+    delete signatures[key];
+  }
+  if(key==='regular') hasSig=false;
+}
+
+function initOneCanvas(key, canvasId){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas) return;
+  sigCanvases[key]=canvas;
+  const ctx=canvas.getContext('2d');
+  const resize=()=>{
+    const w=canvas.parentElement.offsetWidth||340;
+    canvas.width=w; canvas.height=130;
+    ctx.strokeStyle='#A22C89'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
+  };
+  resize();
+  let drawing=false, lx=0, ly=0;
+  const getPos=e=>{const r=canvas.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return[s.clientX-r.left,s.clientY-r.top];};
+  canvas.addEventListener('mousedown',e=>{drawing=true;if(key==='regular')hasSig=true;[lx,ly]=getPos(e);});
+  canvas.addEventListener('mousemove',e=>{if(!drawing)return;const[x,y]=getPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];signatures[key]=canvas.toDataURL();});
+  canvas.addEventListener('mouseup',()=>drawing=false);
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;if(key==='regular')hasSig=true;[lx,ly]=getPos(e);},{passive:false});
+  canvas.addEventListener('touchmove',e=>{if(!drawing)return;e.preventDefault();const[x,y]=getPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];signatures[key]=canvas.toDataURL();},{passive:false});
+  canvas.addEventListener('touchend',()=>drawing=false);
+}
+
+function initSig(){
+  sigCanvas=document.getElementById('sig-canvas');
+  if(!sigCanvas) return;
+  sigCtx=sigCanvas.getContext('2d');
+  const resize=()=>{
+    const w=sigCanvas.parentElement.offsetWidth||340;
+    sigCanvas.width=w; sigCanvas.height=150;
+    sigCtx.strokeStyle='#A22C89'; sigCtx.lineWidth=2.5; sigCtx.lineCap='round'; sigCtx.lineJoin='round';
+  };
+  resize();
+  const getPos=e=>{const r=sigCanvas.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return[s.clientX-r.left,s.clientY-r.top];};
+  sigCanvas.addEventListener('mousedown',e=>{drawing=true;hasSig=true;[lastX,lastY]=getPos(e);});
+  sigCanvas.addEventListener('mousemove',e=>{if(!drawing)return;const[x,y]=getPos(e);sigCtx.beginPath();sigCtx.moveTo(lastX,lastY);sigCtx.lineTo(x,y);sigCtx.stroke();[lastX,lastY]=[x,y];});
+  sigCanvas.addEventListener('mouseup',()=>drawing=false);
+  sigCanvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;hasSig=true;[lastX,lastY]=getPos(e);},{passive:false});
+  sigCanvas.addEventListener('touchmove',e=>{if(!drawing)return;e.preventDefault();const[x,y]=getPos(e);sigCtx.beginPath();sigCtx.moveTo(lastX,lastY);sigCtx.lineTo(x,y);sigCtx.stroke();[lastX,lastY]=[x,y];},{passive:false});
+  sigCanvas.addEventListener('touchend',()=>drawing=false);
+}
+function clearSig(){ if(sigCtx) sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height); hasSig=false; }
+function getSigData(){
+  if(usingSavedSig&&selectedPat) return patientSigs[selectedPat.name];
+  const canvas=sigCanvases['regular']||sigCanvas;
+  if(canvas) return canvas.toDataURL();
+  return null;
+}
+function getAllSigData(){
+  const result={};
+  if(usingSavedSig&&selectedPat){ result['regular']=patientSigs[selectedPat.name]; }
+  else { Object.assign(result, signatures); }
+  return result;
+}
+
+/* ── Save record ── */
+function saveRecord(){
+  const patName=document.getElementById('pat-name').value.trim();
+  const visit=selectedRoute||'Not specified';
+  const notes=document.getElementById('notes').value.trim();
+  const msg=document.getElementById('collect-msg');
+  msg.className='msg'; msg.textContent='';
+  if(currentRole!=='manager' && !selectedEmp){ msg.className='msg err'; msg.textContent='Please select an employee.'; return; }
+  if(!selectedRoute){ msg.className='msg err'; msg.textContent='Please select a route first.'; return; }
+  // Blister pack visits skip med schedule and signature
+  if(isBlisterPack){ hasSig = true; }
+  if(!patName||!selectedPat){ msg.className='msg err'; msg.textContent='Please select a patient from the list.'; return; }
+  const anyMissed = Object.values(medSchedule).some(v=>v==='M');
+  const anyWitnessed = Object.values(medSchedule).some(v=>v==='W');
+  const anyCarried = Object.values(medSchedule).some(v=>v==='C');
+  const needsSig = anyWitnessed; // Only W requires signature
+  const noSigNeeded = !anyWitnessed && (anyMissed || anyCarried);
+  if(!hasSig && needsSig){ msg.className='msg err'; msg.textContent='Please collect or use a saved signature.'; return; }
+  if(!hasSig && !noSigNeeded && !Object.values(medSchedule).some(v=>v)){ msg.className='msg err'; msg.textContent='Please mark the medication schedule first.'; return; }
+  // Only require controlled sig if W is selected (not for M or C only)
+  if(anyWitnessed && selectedPat.controlled&&selectedPat.controlledCount>0){
+    for(let i=0;i<selectedPat.controlledCount;i++){
+      if(!signatures['controlled_'+i]){ msg.className='msg err'; msg.textContent='Please collect all controlled medication signatures.'; return; }
+    }
+  }
+  const anyWitnessedVisit = Object.values(medSchedule).some(v=>v==='W');
+  const sigData = anyWitnessedVisit ? getSigData() : null;
+  const allSigs = anyWitnessedVisit ? getAllSigData() : {};
+  if(anyWitnessedVisit && !usingSavedSig && sigData && selectedPat){ patientSigs[selectedPat.name]=sigData; savePSigs(); }
+  const recordEmployee = getRecordEmployee();
+  const recordTimestamp = getRecordTimestamp();
+  const managerFlagged = isManagerFlagged();
+  const newRec = {
+    id: Date.now().toString(),
+    timestamp: recordTimestamp,
+    employee: recordEmployee,
+    patient: selectedPat.name,
+    mht: selectedPat.mht||'',
+    visitType: visit,
+    blisterPack: isBlisterPack,
+    unableToSign: getUnableToSignReason(),
+    notes,
+    signature: (anyWitnessedVisit && hasSig) ? sigData : null,
+    controlledSignatures: allSigs,
+    controlled: selectedPat.controlled||false,
+    usedSaved: usingSavedSig,
+    medSchedule: {...medSchedule},
+    medNextDay: {...medNextDay},
+    managerEntry: currentRole==='manager',
+    managerFlagged: managerFlagged,
+    enteredBy: currentRole==='manager' ? 'Manager ('+currentUser+')' : null
+  };
+  records.unshift(newRec);
+  saveRec();
+  saveRecFirebase(newRec);
+  clearSig(); selectedPat=null; usingSavedSig=false; resetMedSchedule();
+  document.getElementById('pat-name').value=''; document.getElementById('notes').value='';
+  document.getElementById('mht-display').style.display='none';
+  renderSigContainer();
+  msg.className='msg ok'; msg.textContent='✓ Saved successfully!';
+  setTimeout(()=>{msg.textContent='';msg.className='msg';},3000);
+}
+
+/* ── Roster ── */
+function addPatient(){
+  const name=document.getElementById('new-patient').value.trim();
+  const mht=document.getElementById('new-mht').value.trim();
+  if(!name) return;
+  if(patients.find(p=>p.name.toLowerCase()===name.toLowerCase())){ alert('Patient already in roster.'); return; }
+  patients.push({name,mht,doctor:'',docPhone:''}); savePat();
+  document.getElementById('new-patient').value=''; document.getElementById('new-mht').value='';
+  renderRoster();
+}
+function removePatient(name){
+  if(!confirm(`Remove "${name}" from the roster?`)) return;
+  patients=patients.filter(p=>p.name!==name); savePat(); renderRoster();
+}
+function openEditPatient(name){
+  const pat=patients.find(p=>p.name===name); if(!pat) return;
+  document.getElementById('edit-pat-name').value=pat.name;
+  document.getElementById('edit-pat-mht').value=pat.mht||'';
+  const controlled=pat.controlled||false;
+  document.getElementById('edit-pat-controlled').checked=controlled;
+  document.getElementById('edit-pat-controlled-count').value=pat.controlledCount||1;
+  document.getElementById('edit-controlled-count-wrap').style.display=controlled?'block':'none';
+  document.getElementById('edit-pat-clozapine').checked=pat.clozapine||false;
+  document.getElementById('edit-pat-highrisk').value=(pat.highRisk||[]).join(', ');
+
+  // Load programs
+  const progs=pat.programs||['MMP'];
+  document.getElementById('edit-prog-mmp').checked=progs.includes('MMP');
+  document.getElementById('edit-prog-map').checked=progs.includes('MAP');
+
+  document.getElementById('edit-pat-original').value=pat.name;
+  document.getElementById('edit-msg').textContent=''; document.getElementById('edit-msg').className='msg';
+  document.getElementById('edit-modal').style.display='flex';
+}
+document.addEventListener('change', function(e){
+  if(e.target.id==='edit-pat-controlled'){
+    document.getElementById('edit-controlled-count-wrap').style.display=e.target.checked?'block':'none';
+  }
+});
+function saveEditPatient(){
+  const original=document.getElementById('edit-pat-original').value;
+  const newName=document.getElementById('edit-pat-name').value.trim();
+  const newMht=document.getElementById('edit-pat-mht').value.trim();
+  const msg=document.getElementById('edit-msg');
+  if(!newName){ msg.className='msg err'; msg.textContent='Name cannot be empty.'; return; }
+  const idx=patients.findIndex(p=>p.name===original); if(idx===-1) return;
+  if(newName!==original){
+    records=records.map(r=>r.patient===original?{...r,patient:newName,mht:newMht}:r);
+    if(patientSigs[original]){ patientSigs[newName]=patientSigs[original]; delete patientSigs[original]; savePSigs(); }
+    saveRec();
+  } else {
+    records=records.map(r=>r.patient===original?{...r,mht:newMht}:r); saveRec();
+  }
+  const newControlled=document.getElementById('edit-pat-controlled').checked && 
+    parseInt(document.getElementById('edit-pat-controlled-count').value)>0;
+  const newControlledCount=newControlled?Math.max(0,parseInt(document.getElementById('edit-pat-controlled-count').value)||0):0;
+  const newClozapine=document.getElementById('edit-pat-clozapine').checked;
+  const newHighRisk=document.getElementById('edit-pat-highrisk').value.split(',').map(s=>s.trim()).filter(s=>s.length>0);
+  const newProgs=[];
+  if(document.getElementById('edit-prog-mmp').checked) newProgs.push('MMP');
+  if(document.getElementById('edit-prog-map').checked) newProgs.push('MAP');
+  patients[idx]={...patients[idx],name:newName,mht:newMht,controlled:newControlled,controlledCount:newControlledCount,clozapine:newClozapine,highRisk:newHighRisk,programs:newProgs.length?newProgs:['MMP']}; savePat();
+  document.getElementById('edit-modal').style.display='none'; renderRoster();
+}
+function renderRoster(){
+  const q=(document.getElementById('roster-search')?.value||'').toLowerCase();
+  const el=document.getElementById('roster-list');
+  const sorted=sortPatients(patients).filter(p=>
+    !q||p.name.toLowerCase().includes(q)||(p.mht||'').toLowerCase().includes(q)||(p.doctor||'').toLowerCase().includes(q)
+  );
+  if(!sorted.length){ el.innerHTML='<div class="empty">No patients found</div>'; return; }
+  let html='',curL='';
+  sorted.forEach(p=>{
+    const letter=lastName(p.name)[0].toUpperCase();
+    if(letter!==curL){ curL=letter; html+=`<div class="alpha-header">${letter}</div>`; }
+    const sc=records.filter(r=>r.patient===p.name).length;
+    const hasSaved=!!patientSigs[p.name];
+    html+=`<div class="patient-row">
+      <div class="patient-row-top">
+        <div style="flex:1;min-width:0;">
+          <div class="patient-row-name">${p.name}</div>
+          ${p.mht?`<div class="patient-row-team">${p.mht}</div>`:''}
+          ${p.controlled?`<span class="controlled-badge">⚠ Controlled x${p.controlledCount}</span>`:''}
+          ${p.clozapine?`<span class="clozapine-badge">⚠ Clozapine</span>`:''}
+          ${(p.highRisk&&p.highRisk.length>0)?p.highRisk.map(m=>`<span class="highrisk-badge">⚠ ${m}</span>`).join(''):''}
+
+          <div style="margin-top:4px;">
+            ${(p.programs||['MMP']).map(pr=>`<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;margin-right:4px;background:${pr==='MMP'?'#E6F1FB':'#EAF3DE'};color:${pr==='MMP'?'#185FA5':'#3B6D11'};">${pr}</span>`).join('')}
+          </div>
+          <div class="patient-sub" style="margin-top:3px;">${sc} visit${sc!==1?'s':''} · ${hasSaved?'<span style="color:#3B6D11">Sig ✓</span>':'No sig yet'}</div>
+        </div>
+        <div class="patient-row-actions">
+          <button class="icon-btn" onclick="prefillCollect('${esc(p.name)}')">Sign</button>
+          <button class="icon-btn" onclick="openEditPatient('${esc(p.name)}')">Edit</button>
+          <button class="icon-btn del" onclick="removePatient('${esc(p.name)}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+function prefillCollect(name){
+  const pat=patients.find(p=>p.name===name);
+  selectedPat=pat||{name,mht:'',doctor:'',docPhone:''};
+  document.getElementById('pat-name').value=name;
+  const mhtDiv=document.getElementById('mht-display');
+  if(selectedPat.mht){ document.getElementById('mht-name-display').textContent=selectedPat.mht; mhtDiv.style.display='block'; } else { mhtDiv.style.display='none'; }
+
+  usingSavedSig=!!patientSigs[name]; hasSig=usingSavedSig;
+  showTab('collect'); renderSigContainer();
+}
+
+/* ── Records ── */
+let recSelectedProgram = 'MMP';
+
+function recSelectProgram(prog){
+  recSelectedProgram = prog;
+  document.getElementById('rec-prog-mmp').className = 'program-btn' + (prog==='MMP'?' active':'');
+  document.getElementById('rec-prog-map').className = 'program-btn' + (prog==='MAP'?' active':'');
+  document.getElementById('search-input').value = '';
+  document.getElementById('records-list').innerHTML = '<div class="empty" style="color:#bbb;">Type a patient name above to view their records</div>';
+}
+
+function renderRecords(){
+  const q=(document.getElementById('search-input')?.value||'').trim().toLowerCase();
+  const el=document.getElementById('records-list');
+  
+  // Require at least 1 character before showing results
+  if(!q){ 
+    el.innerHTML='<div class="empty" style="color:#bbb;">Type a patient name above to view their records</div>'; 
+    return; 
+  }
+
+  // Filter by search AND program
+  const filtered=records.filter(r=>{
+    const matchesSearch = r.patient.toLowerCase().includes(q)||(r.mht||'').toLowerCase().includes(q);
+    const pat = patients.find(p=>p.name===r.patient);
+    const matchesProg = (pat?.programs||['MMP']).includes(recSelectedProgram);
+    return matchesSearch && matchesProg;
+  });
+
+  const sorted=[...filtered].sort((a,b)=>lastName(a.patient).localeCompare(lastName(b.patient)));
+  if(!sorted.length){ el.innerHTML='<div class="empty">No records found</div>'; return; }
+  let html='',curL='';
+  sorted.forEach(r=>{
+    const letter=lastName(r.patient)[0]?.toUpperCase()||'?';
+    if(letter!==curL){ curL=letter; html+=`<div class="alpha-header">${letter}</div>`; }
+    html+=`<div class="record" onclick="openModal('${r.id}')">
+      <div class="record-name">${r.patient}</div>
+      ${r.mht?`<div class="record-team">${r.mht}</div>`:''}
+      <div class="record-meta">${r.employee} · ${formatDate(r.timestamp)}</div>
+      <div class="record-meta">${r.visitType}</div>
+      <span class="badge signed">✓ Signed</span>${r.usedSaved?'<span class="badge saved-sig" style="margin-left:5px;">Saved sig</span>':''}
+      ${r.managerEntry&&r.managerFlagged?'<span class="badge" style="margin-left:5px;background:#FFF9E6;color:#B45309;">Manager entry</span>':''}
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+/* ── Compliance ── */
+function renderCompliance(){
+  const q=(document.getElementById('comp-search')?.value||'').toLowerCase();
+  const sg=document.getElementById('stat-grid');
+  const today=records.filter(r=>isToday(r.timestamp));
+  const week=records.filter(r=>isThisWeek(r.timestamp));
+  const allPats=[...new Set(records.map(r=>r.patient))];
+  sg.innerHTML=`
+    <div class="stat"><div class="stat-val">${today.length}</div><div class="stat-lbl">Signatures today</div></div>
+    <div class="stat"><div class="stat-val">${[...new Set(today.map(r=>r.patient))].length}</div><div class="stat-lbl">Patients today</div></div>
+    <div class="stat"><div class="stat-val">${week.length}</div><div class="stat-lbl">This week</div></div>
+    <div class="stat"><div class="stat-val">${allPats.length}</div><div class="stat-lbl">Total patients</div></div>`;
+  const cl=document.getElementById('comp-list');
+  const patObjs=allPats.map(n=>{const pat=patients.find(p=>p.name===n); return {name:n,mht:pat?.mht||records.find(r=>r.patient===n)?.mht||''};});
+  const sorted=sortPatients(patObjs).filter(p=>!q||p.name.toLowerCase().includes(q)||(p.mht||'').toLowerCase().includes(q));
+  if(!sorted.length){ cl.innerHTML='<div class="empty">No patients found</div>'; return; }
+  let html='',curL='';
+  sorted.forEach(p=>{
+    const letter=lastName(p.name)[0]?.toUpperCase()||'?';
+    if(letter!==curL){ curL=letter; html+=`<div class="alpha-header">${letter}</div>`; }
+    const pRecs=records.filter(r=>r.patient===p.name);
+    const todayRecs=pRecs.filter(r=>isToday(r.timestamp));
+    const empsSeen=[...new Set(todayRecs.map(r=>r.employee))].map(e=>{
+      const parts=e.trim().split(' ');
+      const first=parts[0];
+      const lastInit=parts.length>1?parts[parts.length-1][0]+'.':'';
+      return first+' '+lastInit;
+    }).join(', ');
+    html+=`<div class="record" onclick="openPatientModal('${encodeURIComponent(p.name)}')">
+      <div class="record-name">${p.name}</div>
+      ${p.mht?`<div class="record-team">${p.mht}</div>`:''}
+      ${p.clozapine?`<span class="clozapine-badge">⚠ Clozapine</span>`:''}
+      ${(p.highRisk&&p.highRisk.length>0)?p.highRisk.map(m=>`<span class="highrisk-badge">⚠ ${m}</span>`).join(''):''}
+      <div class="record-meta" style="margin-top:4px;">${pRecs.length} visit${pRecs.length!==1?'s':''} total · Last: ${formatDate(pRecs[0].timestamp)}</div>
+      ${todayRecs.length?`<div class="record-meta" style="color:#A22C89;font-weight:600;margin-top:3px;">Today: ${empsSeen}</div>`:''}
+      <span class="badge count">${todayRecs.length} today</span>
+    </div>`;
+  });
+  cl.innerHTML=html;
+}
+
+/* ── Settings ── */
+/* ── Export helpers ── */
+function getInitials(name){
+  return name.split(' ').map(p=>p[0]).join('').toUpperCase().slice(0,3);
+}
+
+function populateMonthDropdown(){
+  const sel=document.getElementById('export-month');
+  if(!sel) return;
+  const months=new Set(records.map(r=>r.timestamp.slice(0,7)));
+  const now=new Date();
+  // Always include current month
+  months.add(now.toISOString().slice(0,7));
+  const sorted=[...months].sort().reverse();
+  sel.innerHTML=sorted.map(m=>{
+    const [y,mo]=m.split('-');
+    const label=new Date(y,mo-1,1).toLocaleDateString('en-CA',{month:'long',year:'numeric'});
+    return `<option value="${m}">${label}</option>`;
+  }).join('');
+}
+
+function getMonthRecords(){
+  const month=document.getElementById('export-month')?.value||new Date().toISOString().slice(0,7);
+  return records.filter(r=>r.timestamp.startsWith(month));
+}
+
+function groupByPatient(recs){
+  const map={};
+  recs.forEach(r=>{
+    if(!map[r.patient]) map[r.patient]={patient:r.patient,mht:r.mht||'',visits:[]};
+    map[r.patient].visits.push({date:r.timestamp,type:r.visitType,emp:r.employee,notes:r.notes||'',sig:r.signature||null,medSchedule:r.medSchedule||{},medNextDay:r.medNextDay||{}});
+  });
+  return Object.values(map).sort((a,b)=>lastName(a.patient).localeCompare(lastName(b.patient)));
+}
+
+function exportCSV(){
+  const month=document.getElementById('export-month')?.value||new Date().toISOString().slice(0,7);
+  const [y,mo]=month.split('-');
+  const monthLabel=new Date(y,mo-1,1).toLocaleDateString('en-CA',{month:'long',year:'numeric'});
+  const recs=getMonthRecords();
+  if(!recs.length){ alert('No records for this month.'); return; }
+  const groups=groupByPatient(recs);
+  let csv="Compliance Report\n";
+  csv+=`Month: ${monthLabel}\n\n`;
+  csv+="Patient Name,Mental Health Team,Clozapine,High-Risk Meds,Date,Time,Visit Type,Employee,Initials,Morning,Lunch,Dinner,Bedtime,PRN,Notes\n";
+  groups.forEach(g=>{
+    g.visits.forEach(v=>{
+      const d=new Date(v.date).toLocaleDateString('en-CA',{year:'numeric',month:'short',day:'numeric'});
+      const time=new Date(v.date).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+      const ms=v.medSchedule||{};
+      const pat=patients.find(p=>p.name===g.patient);
+      const clozFlag=pat?.clozapine?'YES':'';
+      const hrFlag=(pat?.highRisk&&pat.highRisk.length>0)?pat.highRisk.join(' | '):'';
+      csv+=`"${g.patient}","${g.mht}","${clozFlag}","${hrFlag}","${d}","${time}","${v.type}","${v.emp}","${getInitials(v.emp)}","${ms.morning||''}","${ms.lunch||''}","${ms.dinner||''}","${ms.bedtime||''}","${ms.prn||''}","${v.notes}"\n`;
+    });
+    csv+="\n";
+  });
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`Compliance_Report_${month}.csv`;
+  a.click();
+}
+
+function buildPageHTML(patientName, mht, label, labelColor, visits, monthLabel, clozapine, highRisk){
+  return `<div class="page">
+    <div class="page-header">
+      <div>
+        <div class="patient-name">${patientName}</div>
+        <div style="display:inline-block;margin-top:6px;font-size:12px;font-weight:700;color:${labelColor};border:2px solid ${labelColor};padding:3px 12px;border-radius:20px;">${label}</div>
+      </div>
+    </div>
+    ${mht?`<div class="patient-meta">${mht}</div>`:''}
+    ${(typeof clozapine!=='undefined'&&clozapine)?'<div style="background:#FFF9E6;border:1.5px solid #F5C842;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-weight:700;color:#B45309;font-size:12px;">⚠ CLOZAPINE PATIENT — Extra care required</div>':''}
+    ${(highRisk&&highRisk.length>0)?highRisk.map(m=>`<div style="background:#FFF9E6;border:1.5px solid #F5A623;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-weight:700;color:#B45309;font-size:12px;">⚠ ${m.toUpperCase()} — High-risk medication</div>`).join(''):''}
+    <div class="sticker-box">[ Prescription sticker here ]</div>
+    <table>
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Visit Type</th>
+        <th>Employee</th>
+        <th>Initials</th>
+        <th>Morning</th>
+        <th>Lunch</th>
+        <th>Dinner</th>
+        <th>Bedtime</th>
+        <th>PRN</th>
+        <th>Notes</th>
+      </tr>
+      ${visits.map(v=>{
+        const d=new Date(v.date);
+        const date=d.toLocaleDateString('en-CA',{year:'numeric',month:'short',day:'numeric'});
+        const time=d.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+        const ms=v.medSchedule||{};
+        const nd=v.medNextDay||{};
+        const slots=['morning','lunch','dinner','bedtime','prn'];
+        // Blister pack visit - show special row
+        // Unable to sign notation
+        if(v.unableToSign){
+          // Add a note row after the visit
+        }
+        if(v.blisterPack){
+          return `<tr>
+            <td>${date}</td>
+            <td>${time}</td>
+            <td>${v.type}</td>
+            <td>${v.emp}</td>
+            <td class="initials">${getInitials(v.emp)}</td>
+            <td colspan="5" style="text-align:center;font-weight:700;color:#3B6D11;background:#EAF3DE;">📦 Blister Pack Delivered</td>
+            <td>${v.notes||'—'}</td>
+          </tr>`;
+        }
+        const getCell=s=>{
+          if(!ms[s]) return '<td style="text-align:center;color:#bbb;">—</td>';
+          if(ms[s]==='W' && v.sig){
+            return '<td style="text-align:center;padding:2px;"><img src="'+v.sig+'" style="max-width:80px;max-height:36px;display:block;margin:0 auto;"></td>';
+          }
+          if(ms[s]==='C'){
+            const nextDay=nd[s]?'*':'';
+            return '<td style="text-align:center;font-weight:700;color:#185FA5;">C'+nextDay+'</td>';
+          }
+          if(ms[s]==='M') return '<td style="text-align:center;font-weight:700;color:#A32D2D;">M</td>';
+          return '<td style="text-align:center;color:#bbb;">—</td>';
+        };
+        return `<tr>
+          <td>${date}</td>
+          <td>${time}</td>
+          <td>${v.type}</td>
+          <td>${v.emp}</td>
+          <td class="initials">${getInitials(v.emp)}</td>
+          ${slots.map(s=>getCell(s)).join('')}
+          <td>${v.notes||'—'}</td>
+        </tr>`;
+      }).join('')}
+    </table>
+    <div style="font-size:9px;color:#aaa;margin-top:4px;">* = Next day carry</div>
+    <div class="footer">Total visits: ${visits.length} · ${monthLabel} · Generated: ${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</div>
+  </div>`;
+}
+
+function getPDFStyles(){
+  return `
+    body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:0;}
+    .page{width:100%;max-width:780px;margin:0 auto;padding:32px;page-break-after:always;}
+    .page:last-child{page-break-after:avoid;}
+    .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;border-bottom:2px solid #ddd;padding-bottom:10px;gap:16px;}
+    .patient-name{font-size:18px;font-weight:bold;color:#1a1a1a;flex:1;}
+    .page-label{font-size:14px;font-weight:bold;text-align:right;white-space:nowrap;color:#A22C89;border:2px solid #A22C89;padding:4px 14px;border-radius:20px;}
+    .patient-meta{font-size:11px;color:#A22C89;font-weight:600;margin-bottom:10px;}
+    .sticker-box{border:none;width:192px;height:144px;box-sizing:border-box;padding:0;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:10px;margin-bottom:14px;}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px;}
+    th{background:#A22C89;color:#fff;padding:7px 10px;text-align:left;font-size:11px;}
+    td{padding:7px 10px;border-bottom:1px solid #e8e8e4;font-size:11px;}
+    tr:nth-child(even){background:#f8f8f5;}
+    .initials{font-weight:bold;color:#A22C89;font-size:13px;}
+    .footer{font-size:10px;color:#aaa;margin-top:12px;text-align:center;}
+    @media print{
+      .page{padding:16px;width:100%;max-width:100%;}
+      @page { margin: 1.5cm; size: A4 landscape; }
+    }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }`;
+}
+
+function exportPDF(type){
+  const month=document.getElementById('export-month')?.value||new Date().toISOString().slice(0,7);
+  const [y,mo]=month.split('-');
+  const monthLabel=new Date(y,mo-1,1).toLocaleDateString('en-CA',{month:'long',year:'numeric'});
+  const recs=getMonthRecords();
+  if(!recs.length){ alert('No records for this month.'); return; }
+
+  const groups=groupByPatient(recs);
+  let pages='';
+
+  if(type==='regular'){
+    // One page per patient — regular medication visits only
+    groups.forEach(g=>{
+      const pat=patients.find(p=>p.name===g.patient);
+      const regularVisits=g.visits.filter(v=>!v.controlled);
+      if(!regularVisits.length) return;
+      pages+=buildPageHTML(g.patient, g.mht, 'Medication', '#A22C89', regularVisits, monthLabel, pat?.clozapine||false, pat?.highRisk||[]);
+    });
+    if(!pages){ alert('No regular medication records for this month.'); return; }
+  } else {
+    // Controlled — one page per controlled medication per patient
+    groups.forEach(g=>{
+      if(!g.controlled) return;
+      const pat=patients.find(p=>p.name===g.patient);
+      const count=pat?.controlledCount||1;
+      for(let i=0;i<count;i++){
+        const ctrlVisits=g.visits.filter(v=>v.controlled && v.controlledSignatures && v.controlledSignatures['controlled_'+i]);
+        if(!ctrlVisits.length) continue;
+        const label=count>1?`Controlled ${i+1}`:'Controlled';
+        pages+=buildPageHTML(g.patient, g.mht, label, '#C45000', ctrlVisits, monthLabel, pat?.clozapine||false, pat?.highRisk||[]);
+      }
+    });
+    if(!pages){ alert('No controlled medication records for this month.'); return; }
+  }
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${type==='regular'?'Medication':'Controlled'} Records - ${monthLabel}</title>
+  <style>${getPDFStyles()}</style></head><body>${pages}</body></html>`;
+
+  const win=window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(()=>{
+    // Show print tip
+    win.document.title = 'Compliance Records - Tip: Uncheck Headers & Footers in print settings';
+    win.print();
+  },500);
+}
+
+
+function changeManagerPin(){
+  const val=document.getElementById('new-manager-pin').value.trim();
+  const msg=document.getElementById('manager-pin-msg');
+  if(!/^\d{4}$/.test(val)){ msg.className='msg err'; msg.textContent='PIN must be exactly 4 digits.'; return; }
+  saveManagerPin(val);
+  document.getElementById('new-manager-pin').value='';
+  msg.className='msg ok'; msg.textContent='✓ Manager PIN updated!';
+  setTimeout(()=>{msg.textContent='';msg.className='msg';},3000);
+}
+
+function saveOfficePin(pin){
+  localStorage.setItem(OFFICE_PIN_KEY, pin);
+  syncDoc('office_pin', {pin}, 'Office PIN');
+}
+function changeOfficePin(){
+  const val=document.getElementById('new-office-pin').value.trim();
+  const msg=document.getElementById('office-pin-msg');
+  if(!/^\d{4}$/.test(val)){ msg.className='msg err'; msg.textContent='PIN must be exactly 4 digits.'; return; }
+  saveOfficePin(val);
+  document.getElementById('new-office-pin').value='';
+  msg.className='msg ok'; msg.textContent='✓ Office PIN updated!';
+  setTimeout(()=>{msg.textContent='';msg.className='msg';},3000);
+}
+
+function changeStaffPin(name, safeId){
+  const inputId = safeId || 'staff-pin-'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+  const input=document.getElementById(inputId);
+  if(!input) return;
+  const val=input.value.trim();
+  if(!/^\d{4}$/.test(val)){ alert('PIN must be exactly 4 digits.'); return; }
+  // Check not same as manager or office PIN
+  if(val===getManagerPin()){ alert('That PIN is already used by the manager.'); return; }
+  if(val===getOfficePin()){ alert('That PIN is already used by the office account.'); return; }
+  // Check not already used by another employee
+  const pins=getEmpPins();
+  for(const [empName, empPin] of Object.entries(pins)){
+    if(empPin===val && empName!==name){
+      alert('That PIN is already used by '+empName+'. Please choose a different PIN.');
+      return;
+    }
+  }
+  saveEmpPin(name,val);
+  input.value='';
+  input.placeholder='✓ Saved!';
+  setTimeout(()=>{ input.placeholder='New PIN'; renderSettings(); },1500);
+}
+
+function renderStaffPinList(){
+  const el=document.getElementById('staff-pin-list');
+  if(!el) return;
+  if(!staff.length){ el.innerHTML='<p style="font-size:13px;color:#bbb;">No staff added yet.</p>'; return; }
+  el.innerHTML=staff.map(s=>{
+    const safeId='staff-pin-'+s.replace(/\s/g,'_');
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <div style="flex:1;font-size:14px;font-weight:600;color:#1a1a1a;">${s}</div>
+      <input type="number" id="${safeId}" placeholder="New PIN" style="width:100px;font-size:15px;padding:8px;letter-spacing:4px;" maxlength="4">
+      <button class="btn sm primary" style="margin-top:0;" onclick="changeStaffPin('${s.replace(/'/g,"\'")}')">Set</button>
+    </div>`;
+  }).join('');
+}
+function generateUniquePin(){
+  const usedPins = new Set();
+  // Add manager and office PINs
+  usedPins.add(getManagerPin());
+  usedPins.add(getOfficePin());
+  // Add ALL default PINs (always check these)
+  Object.values(DEFAULT_EMP_PINS).forEach(p => usedPins.add(String(p)));
+  // Add live Firebase PINs
+  Object.values(livePins).forEach(p => usedPins.add(String(p)));
+  // Add localStorage PINs
+  try{
+    const stored = JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
+    Object.values(stored).forEach(p => usedPins.add(String(p)));
+  }catch(e){}
+  // Add current staff PINs directly
+  staff.forEach(name => {
+    const p = getEmpPin(name);
+    if(p) usedPins.add(String(p));
+  });
+  console.log('Used PINs:', [...usedPins]);
+  // Generate random unique PIN between 2000-9999 (avoid 1xxx range used by defaults)
+  let pin, attempts = 0;
+  do {
+    pin = String(Math.floor(2000 + Math.random() * 8000));
+    attempts++;
+  } while(usedPins.has(pin) && attempts < 200);
+  console.log('Generated PIN:', pin);
+  return pin;
+}
+
+function addStaff(){
+  const val=document.getElementById('new-staff').value.trim();
+  if(!val) return;
+  if(staff.includes(val)){ alert('Already added.'); return; }
+  const newPin = generateUniquePin();
+  staff.push(val); 
+  saveStaff(); 
+  saveEmpPin(val, newPin);
+  document.getElementById('new-staff').value=''; 
+  renderSettings(); renderEmpGrid(); renderEmpLoginList();
+  alert('✓ ' + val + ' added!\nPIN: ' + newPin + '\nPlease give this PIN to the employee.');
+}
+function removeStaff(name){
+  if(!confirm(`Remove "${name}" from staff?`)) return;
+  staff=staff.filter(s=>s!==name); saveStaff();
+  if(selectedEmp===name) selectedEmp='';
+  // Also delete this person's PIN so nothing is left orphaned in the database.
+  try {
+    const pins = JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
+    if (pins[name] !== undefined) {
+      delete pins[name];
+      localStorage.setItem(EMP_PINS_KEY, JSON.stringify(pins));
+      if (window._fbReady && remoteLoadOK) {
+        window._setDoc(window._doc(window._db,'app_settings','emp_pins'), pins)
+          .catch(e => console.error('[removeStaff] PIN cleanup failed:', e));
+      }
+    }
+  } catch(e){ console.error('[removeStaff]', e); }
+  renderSettings(); renderEmpGrid();
+}
+function clearPatientSig(name){
+  if(!confirm(`Clear saved signature for "${name}"?`)) return;
+  delete patientSigs[name]; savePSigs(); renderSettings();
+}
+function renderEmpLoginList(){
+  const el=document.getElementById('emp-login-list');
+  if(!el) return;
+  if(!staff.length){
+    el.innerHTML='<p style="color:rgba(255,255,255,0.6);font-size:13px;text-align:center;">No staff added yet</p>';
+    return;
+  }
+  el.innerHTML=staff.map(s=>`
+    <button style="width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.1);color:#fff;font-family:inherit;text-align:left;" onclick="selectEmployee('${s.replace(/'/g,"\'")}')">
+      👤 ${s}
+    </button>`).join('');
+}
+
+function renderSettings(){
+  // Hide clear test data button if already used
+
+  const sl=document.getElementById('staff-list');
+  if(!staff.length){
+    sl.innerHTML='<p style="font-size:13px;color:#bbb;">No staff added yet.</p>';
+  } else {
+    // Get active shifts from Firebase for green dots
+    const renderWithShifts = (shifts) => {
+      // Sort: active first, then alphabetical
+      const sorted=[...staff].sort((a,b)=>{
+        const aActive = shifts[a]?.active;
+        const bActive = shifts[b]?.active;
+        if(aActive && !bActive) return -1;
+        if(!aActive && bActive) return 1;
+        return lastName(a).localeCompare(lastName(b));
+      });
+      sl.innerHTML=sorted.map(s=>{
+        const safeId='staff-pin-'+s.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+        const isActive = shifts[s]?.active;
+        const route = shifts[s]?.route||'';
+        const startTime = isActive && shifts[s]?.startedAt ? new Date(shifts[s].startedAt).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}) : '';
+        return `<div class="patient-row" style="margin-bottom:10px;${isActive?'border-left:3px solid #3B6D11;padding-left:10px;':''}">
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:10px;">${isActive?'🟢':'⚪'}</span>
+                  <div class="patient-row-name">${s}</div>
+                </div>
+                <div class="patient-sub">PIN: ${getEmpPin(s)}${isActive?' · On shift · '+route+' since '+startTime:' · Off shift'}</div>
+              </div>
+              <button class="icon-btn del" onclick="removeStaff('${esc(s)}')">Remove</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="number" id="${safeId}" placeholder="New PIN" style="flex:1;font-size:15px;padding:8px 10px;border:1px solid #ddd;border-radius:8px;letter-spacing:4px;" maxlength="4">
+              <button class="btn sm primary" style="margin-top:0;white-space:nowrap;" onclick="changeStaffPin('${esc(s)}','${safeId}')">Reset PIN</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    };
+
+    // Load shifts from Firebase
+    if(window._fbReady){
+      window._onSnapshot(window._col('shifts'), snap=>{
+        const shifts = {};
+        snap.docs.forEach(d=>{ shifts[d.id]=d.data(); });
+        renderWithShifts(shifts);
+      });
+    } else {
+      renderWithShifts({});
+    }
+  }
+  const countEl=document.getElementById('staff-count');
+  if(countEl) countEl.textContent=staff.length+' employees';
+  renderStaffPinList();
+  const ssl=document.getElementById('saved-sigs-list');
+  const sigPats=Object.keys(patientSigs);
+  ssl.innerHTML=sigPats.length
+    ? sigPats.map(p=>`<div class="patient-row" style="margin-bottom:8px;">
+        <div class="patient-row-top">
+          <div><div class="patient-row-name">${p}</div><div class="patient-sub">Signature on file</div></div>
+          <button class="icon-btn del" onclick="clearPatientSig('${esc(p)}')">Clear</button>
+        </div>
+      </div>`).join('')
+    : '<p style="font-size:13px;color:#bbb;">Signatures saved automatically on first visit.</p>';
+}
+
+/* ── Modals ── */
+function openModal(id){
+  const r=records.find(x=>x.id===id); if(!r) return;
+  document.getElementById('modal-title').textContent=r.patient;
+  document.getElementById('modal-body').innerHTML=`
+    <div class="detail-row"><span class="detail-key">Employee</span><span class="detail-val">${r.employee}</span></div>
+    ${r.mht?`<div class="detail-row"><span class="detail-key">Mental health team</span><span class="detail-val" style="color:#A22C89">${r.mht}</span></div>`:''}
+
+    <div class="detail-row"><span class="detail-key">Visit type</span><span class="detail-val">${r.visitType}</span></div>
+    <div class="detail-row"><span class="detail-key">Date & time</span><span class="detail-val">${formatDate(r.timestamp)}</span></div>
+    <div class="detail-row"><span class="detail-key">Signature</span><span class="detail-val">${r.usedSaved?'Saved (on file)':'Fresh'}</span></div>
+    ${r.medSchedule&&Object.values(r.medSchedule).some(v=>v)?`
+    <div class="detail-row"><span class="detail-key">Med schedule</span><span class="detail-val" style="text-align:right;">
+      ${['morning','lunch','dinner','bedtime','prn'].map(s=>{
+        if(!r.medSchedule[s]) return '';
+        const v=r.medSchedule[s];
+        const bg=v==='W'?'#EAF3DE':v==='C'?'#E6F1FB':'#FCEBEB';
+        const col=v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
+        const nd=(r.medNextDay||{})[s]?' *':'';
+        return `<span style="display:inline-block;margin-left:4px;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:700;background:${bg};color:${col};">${s.charAt(0).toUpperCase()+s.slice(1)}: ${v}${nd}</span>`;
+      }).join('')}
+    </span></div>`:''}
+    ${r.notes?`<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${r.notes}</span></div>`:''}
+    <p style="font-size:12px;color:#bbb;margin-top:12px;">Signature image</p>`;
+  const img=document.getElementById('modal-sig');
+  if(r.signature){
+    img.src=r.signature;
+    img.style.display='block';
+  } else {
+    img.style.display='none';
+    // Show a no-signature notice instead
+    const noSig = document.createElement('div');
+    noSig.style.cssText='background:#f8f8f5;border:1px solid #e8e8e4;border-radius:10px;padding:12px;text-align:center;color:#aaa;font-size:12px;margin-top:8px;';
+    noSig.textContent='No signature — medication was missed or carried';
+    document.getElementById('modal-body').appendChild(noSig);
+  }
+  const db=document.getElementById('modal-delete-btn'); db.style.display='block'; db.onclick=()=>deleteRecord(id);
+  document.getElementById('modal').style.display='flex';
+}
+function openPatientModal(enc){
+  const name=decodeURIComponent(enc);
+  const pat=patients.find(p=>p.name===name);
+  const pRecs=records.filter(r=>r.patient===name).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const slots=['morning','lunch','dinner','bedtime','prn'];
+  document.getElementById('modal-title').textContent=name;
+
+  let html='';
+  if(pat&&pat.mht) html+='<div class="detail-row"><span class="detail-key">Mental health team</span><span class="detail-val" style="color:#A22C89">'+pat.mht+'</span></div>';
+  if(pat&&pat.clozapine) html+='<div style="background:#FFF9E6;border:1px solid #F5C842;border-radius:8px;padding:8px;margin:8px 0;font-size:12px;font-weight:700;color:#B45309;">&#9888; Clozapine patient</div>';
+  html+='<div style="font-size:12px;font-weight:700;color:#aaa;letter-spacing:0.06em;text-transform:uppercase;margin:12px 0 6px;">Visit records ('+pRecs.length+')</div>';
+
+  if(pRecs.length){
+    pRecs.forEach(function(r){
+      const ms=r.medSchedule||{};
+      const nd=r.medNextDay||{};
+      let slotHtml='';
+      slots.forEach(function(s){
+        if(!ms[s]) return;
+        const v=ms[s];
+        const bg=v==='W'?'#EAF3DE':v==='C'?'#E6F1FB':'#FCEBEB';
+        const col=v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
+        slotHtml+='<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:'+bg+';color:'+col+';">'+s.charAt(0).toUpperCase()+s.slice(1)+':'+v+(nd[s]?'*':'')+'</span> ';
+      });
+      html+='<div style="background:#fafaf8;border:1px solid #e8e8e4;border-radius:10px;padding:10px;margin-bottom:8px;">';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;">';
+      html+='<div><div style="font-size:12px;font-weight:700;">'+formatDate(r.timestamp)+'</div>';
+      html+='<div style="font-size:11px;color:#888;">&#128100; '+r.employee+' &middot; '+r.visitType+'</div></div>';
+      html+='<button data-rid="'+r.id+'" onclick="event.stopPropagation();deleteRecord(this.dataset.rid)" style="background:#FCEBEB;border:none;color:#A32D2D;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;">Delete</button>';
+      html+='</div>';
+      if(slotHtml) html+='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">'+slotHtml+'</div>';
+      if(r.signature && r.signature.length > 1000) html+='<button data-rid="'+r.id+'" onclick="event.stopPropagation();viewSig(this.dataset.rid)" style="margin-top:6px;background:#E6F1FB;border:none;color:#185FA5;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;">&#9998; View signature</button>';
+      if(r.unableToSign) html+='<div style="font-size:11px;color:#B45309;background:#FFF9E6;padding:4px 10px;border-radius:8px;margin-top:4px;">⚠ Patient unable to sign: '+r.unableToSign+'</div>';
+      else html+='<div style="font-size:10px;color:#aaa;margin-top:4px;">No signature &mdash; missed or carried</div>';
+      html+='</div>';
+    });
+  } else {
+    html+='<p style="font-size:13px;color:#bbb;">No visits recorded yet.</p>';
+  }
+
+  document.getElementById('modal-body').innerHTML=html;
+  document.getElementById('modal-sig').style.display='none';
+  document.getElementById('modal-delete-btn').style.display='none';
+  document.getElementById('modal').style.display='flex';
+}
+
+function viewSig(id){
+  const r=records.find(x=>x.id===id);
+  if(!r||!r.signature) return;
+  // Open signature in a new window for clear viewing
+  const win = window.open('','_blank','width=500,height=400');
+  win.document.write('<html><body style="margin:0;background:#f5f5f0;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="background:#fff;border-radius:12px;padding:20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.1);"><div style="font-size:14px;font-weight:700;color:#A22C89;margin-bottom:12px;">'+r.patient+' — '+new Date(r.timestamp).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})+'</div><img src="'+r.signature+'" style="max-width:400px;border:1px solid #eee;border-radius:8px;"><div style="font-size:12px;color:#888;margin-top:10px;">Signed by '+r.employee+'</div></div></body></html>');
+  win.document.close();
+}
+function deleteRecord(id){
+  if(!confirm('Delete this record? Cannot be undone.')) return;
+  const recToDelete = records.find(r=>r.id===id);
+  records=records.filter(r=>r.id!==id); saveRec(); deleteRecFirebase(id, recToDelete?.patient);
+  document.getElementById('modal').style.display='none';
+  renderCompliance();
+}
+/* ── End of Shift & Missed Med Reports ── */
+const MISSED_KEY = 'rxsign_missed_v7'; // bumped to force fresh storage
+let currentShiftRoute = null;
+let currentMissedList = []; // Store missed patients from checklist
+
+function getMissedReports(){
+  try{ return JSON.parse(localStorage.getItem(MISSED_KEY)||'[]'); }catch(e){ return []; }
+}
+function saveMissedReports(reports){ localStorage.setItem(MISSED_KEY, JSON.stringify(reports)); }
+
+function showEndShift(){
+  currentShiftRoute = selectedRoute||'';
+  // Show route selection if no route selected yet
+  if(!currentShiftRoute){
+    document.getElementById('shift-route-select').style.display='block';
+    document.getElementById('shift-checklist-wrap').style.display='none';
+  } else {
+    document.getElementById('shift-route-select').style.display='none';
+    document.getElementById('shift-checklist-wrap').style.display='block';
+    renderShiftChecklist(currentShiftRoute);
+  }
+  document.getElementById('shift-modal').style.display='flex';
+}
+
+function selectShiftRoute(route){
+  currentShiftRoute = route;
+  document.getElementById('shift-route-select').style.display='none';
+  document.getElementById('shift-checklist-wrap').style.display='block';
+  renderShiftChecklist(route);
+}
+
+function renderShiftChecklist(route){
+  const today = new Date().toDateString();
+  const normalize = s=>(s||'').replace(/\s/g,'').toLowerCase();
+  const todayRecs = records.filter(r=>new Date(r.timestamp).toDateString()===today && normalize(r.visitType)===normalize(route));
+
+  // Find patients visited today on this route who had any M (missed) in med schedule
+  const missedPatients=[];
+  const seenPatients=[];
+
+  todayRecs.forEach(r=>{
+    const ms=r.medSchedule||{};
+    const hasMissed=Object.values(ms).some(v=>v==='M');
+    const pat=patients.find(p=>p.name===r.patient);
+    if(hasMissed){
+      missedPatients.push({name:r.patient, mht:r.mht||'', clozapine:pat?.clozapine||false, highRisk:pat?.highRisk||[], time:r.timestamp, medSchedule:ms});
+    } else {
+      seenPatients.push(r.patient);
+    }
+  });
+
+  let html='';
+  const missedCount=missedPatients.length;
+
+  const summary = missedCount===0
+    ? `<div style="background:#EAF3DE;border-radius:10px;padding:12px;margin-bottom:14px;text-align:center;"><div style="font-size:15px;font-weight:700;color:#3B6D11;">✓ No missed meds on ${route} today!</div></div>`
+    : `<div style="background:#FCEBEB;border-radius:10px;padding:12px;margin-bottom:14px;text-align:center;"><div style="font-size:15px;font-weight:700;color:#A32D2D;">⚠ ${missedCount} patient${missedCount!==1?'s':''} with missed meds</div></div>`;
+
+  // Show missed patients
+  if(missedPatients.length){
+    html+='<div style="font-size:12px;font-weight:700;color:#A32D2D;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Missed meds</div>';
+    missedPatients.forEach(p=>{
+      const slots=Object.entries(p.medSchedule).filter(([k,v])=>v==='M').map(([k])=>k.charAt(0).toUpperCase()+k.slice(1)).join(', ');
+      const patInfo=patients.find(px=>px.name===p.name);
+      const isControlled=patInfo?.controlled&&patInfo?.controlledCount>0;
+      const missedRec = todayRecs.find(r=>r.patient===p.name);
+      html+=`<div class="checklist-item missed">
+        <div style="flex:1;">
+          <div class="checklist-name">${p.name}${p.clozapine?'<span class="clozapine-badge" style="margin-left:6px;">⚠ Clozapine</span>':''}${isControlled?'<span class="controlled-badge" style="margin-left:6px;">⚠ Controlled</span>':''}</div>
+          <div style="font-size:11px;margin-top:2px;color:#A32D2D;">Missed: ${slots}</div>
+          ${p.mht?`<div style="font-size:11px;color:#888;">${p.mht}</div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+          <div class="checklist-status">✗ Missed</div>
+          ${missedRec?`<button onclick="editMissedRecord('${missedRec.id}')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid #A22C89;background:#fff;color:#A22C89;cursor:pointer;font-weight:600;">Edit</button>`:''}
+        </div>
+      </div>`;
+    });
+  }
+
+  // Show seen patients
+  if(seenPatients.length){
+    html+='<div style="font-size:12px;font-weight:700;color:#3B6D11;margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.05em;">All meds taken</div>';
+    seenPatients.forEach(name=>{
+      html+=`<div class="checklist-item seen">
+        <div style="flex:1;"><div class="checklist-name">${name}</div></div>
+        <div class="checklist-status">✓ Done</div>
+      </div>`;
+    });
+  }
+
+  if(!todayRecs.length){
+    html='<div class="empty">No visits recorded for '+route+' today yet.</div>';
+  }
+
+  document.getElementById('shift-checklist').innerHTML = summary + html;
+  document.getElementById('save-missed-btn').style.display = missedCount>0 ? 'block' : 'none';
+  // Store missed patients for use when save button is clicked
+  currentMissedList = missedPatients;
+}
+
+function editMissedRecord(recId){
+  // Close shift modal and go to collect screen to re-record
+  document.getElementById('shift-modal').style.display='none';
+  const rec = records.find(r=>r.id===recId);
+  if(!rec){ alert('Record not found.'); return; }
+  // Find patient and pre-select them
+  const pat = patients.find(p=>p.name===rec.patient);
+  if(pat){
+    showTab('collect');
+    setTimeout(()=>{
+      document.getElementById('pat-name').value = rec.patient;
+      selectPatient(rec.patient);
+      // Show note
+      const msg = document.getElementById('collect-msg');
+      if(msg){ 
+        msg.className='msg ok'; 
+        msg.textContent='Editing record for '+rec.patient+' — update med schedule and save again'; 
+      }
+      // Delete old record first
+      records = records.filter(r=>r.id!==recId);
+      saveRec();
+      deleteRecFirebase(recId, rec.patient);
+    }, 300);
+  }
+}
+
+async function saveMissedReport(){
+  if(!currentShiftRoute){ alert('No route selected.'); return; }
+
+  const today = new Date().toDateString();
+  const norm = s => (s||'').replace(/[\s\-]/g,'').toLowerCase();
+
+  // Find all records from today with ANY M in med schedule
+  const allMissed = records.filter(r => {
+    const sameDay = new Date(r.timestamp).toDateString() === today;
+    const hasM = Object.values(r.medSchedule||{}).some(v=>v==='M');
+    return sameDay && hasM;
+  });
+
+  if(!allMissed.length){
+    alert('No missed medications found for today.');
+    return;
+  }
+
+  const missedPatients = allMissed.map(r => {
+    const pat = patients.find(p=>p.name===r.patient);
+    const slots = Object.entries(r.medSchedule||{})
+      .filter(([k,v])=>v==='M')
+      .map(([k])=>k.charAt(0).toUpperCase()+k.slice(1))
+      .join(', ');
+    return {
+      name: r.patient,
+      mht: r.mht||'',
+      clozapine: pat?.clozapine||false,
+      highRisk: pat?.highRisk||[],
+      missedSlots: slots
+    };
+  });
+
+  const report = {
+    id: Date.now().toString(),
+    route: currentShiftRoute,
+    date: new Date().toISOString(),
+    employee: currentUser,
+    missedPatients
+  };
+
+  // Save to localStorage
+  let existing = [];
+  try { existing = JSON.parse(localStorage.getItem(MISSED_KEY)||'[]'); } catch(e){}
+  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
+  existing = existing.filter(r=>new Date(r.date)>=sevenDaysAgo);
+  existing.unshift(report);
+  localStorage.setItem(MISSED_KEY, JSON.stringify(existing));
+
+  // Save to Firebase
+  if(window._fbReady){
+    try{
+      await window._addDoc(window._col('missed_reports'), report);
+    } catch(e){ console.error('Firebase save error:', e); }
+  }
+
+  document.getElementById('shift-modal').style.display='none';
+  resetShiftBtn();
+  if(pendingLogout){
+    doLogout();
+    return;
+  }
+  showTab('missed');
+  alert('✓ Missed med report saved! View it in the Missed tab.');
+}
+
+async function renderMissedReports(){
+  const el = document.getElementById('missed-reports-list');
+  if(!el) return;
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  // Load from localStorage
+  let reports = [];
+  try {
+    const raw = localStorage.getItem(MISSED_KEY);
+    if(raw) reports = JSON.parse(raw);
+  } catch(e){ reports = []; }
+
+  // Filter to last 7 days
+  reports = reports.filter(r => new Date(r.date) >= sevenDaysAgo);
+
+  // Merge Firebase reports
+  if(window._fbReady){
+    try{
+      const snap = await new Promise((resolve, reject)=>{
+        const timer = setTimeout(()=>reject('timeout'), 4000);
+        const unsub = window._onSnapshot(window._col('missed_reports'), s=>{
+          clearTimeout(timer); unsub(); resolve(s);
+        });
+      });
+      const existingIds = new Set(reports.map(r=>r.id));
+      snap.docs.forEach(d=>{
+        const r = {id: d.id, ...d.data()};
+        if(new Date(r.date) >= sevenDaysAgo && !existingIds.has(r.id)){
+          reports.push(r);
+        }
+      });
+      try{ localStorage.setItem(MISSED_KEY, JSON.stringify(reports)); }catch(e){}
+    } catch(e){ console.log('Firebase missed:', e); }
+  }
+
+  reports.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  if(!reports.length){
+    el.innerHTML = '<div class="empty">No missed med reports in the last 7 days</div>';
+    return;
+  }
+
+  // Group by date
+  const grouped = {};
+  reports.forEach(r => {
+    const dateKey = new Date(r.date).toLocaleDateString('en-CA',{weekday:'long', year:'numeric', month:'long', day:'numeric'});
+    if(!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push(r);
+  });
+
+  let html = '';
+  Object.entries(grouped).forEach(([dateKey, dayReports]) => {
+    html += `<div class="alpha-header" style="cursor:pointer;" onclick="toggleDateGroup('date-${dateKey.replace(/[^a-z0-9]/gi,'_')}')">
+      📅 ${dateKey} <span style="font-size:11px;color:#aaa;">(${dayReports.length} report${dayReports.length!==1?'s':''})</span>
+    </div>
+    <div id="date-${dateKey.replace(/[^a-z0-9]/gi,'_')}">`;
+
+    dayReports.forEach(r => {
+      const timeStr = new Date(r.date).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+      html += `<div class="missed-report">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div class="missed-report-header">${r.route||'Unknown route'} — ${timeStr}</div>
+            <div class="missed-report-meta">Employee: ${r.employee||'Unknown'}</div>
+            <div class="missed-report-meta">${(r.missedPatients||[]).length} patient${(r.missedPatients||[]).length!==1?'s':''} missed</div>
+          </div>
+          <button class="btn sm primary" style="margin-top:0;" onclick="downloadMissedReport('${r.id}')">PDF</button>
+        </div>
+        <div style="margin-top:10px;">
+          ${(r.missedPatients||[]).map(p=>`<div class="missed-item">
+            <div class="missed-dot"></div>
+            <div>
+              <span style="font-weight:700;">${p.name}</span>
+              ${p.clozapine?'<span class="clozapine-badge" style="margin-left:6px;">⚠ Clozapine</span>':''}
+              ${p.mht?`<span style="font-size:11px;color:#888;margin-left:6px;">${p.mht}</span>`:''}
+              ${p.missedSlots?`<div style="font-size:11px;color:#A32D2D;margin-top:2px;">Missed: ${p.missedSlots}</div>`:''}
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    });
+
+    html += `</div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function toggleDateGroup(id){
+  const el = document.getElementById(id);
+  if(el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+function downloadMissedReport(id){
+  const reports = getMissedReports();
+  const r = reports.find(x=>x.id===id);
+  if(!r) return;
+  const dateStr = new Date(r.date).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const timeStr = new Date(r.date).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
+
+  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Missed Med Report</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:32px;}
+    .header{border-bottom:2px solid #A32D2D;padding-bottom:12px;margin-bottom:20px;}
+    .report-title{font-size:20px;font-weight:bold;color:#A32D2D;}
+    .report-sub{font-size:13px;color:#666;margin-top:4px;}
+    .sticker-box{border:1.5px dashed #bbb;border-radius:6px;padding:14px;text-align:center;color:#bbb;font-size:11px;margin-bottom:20px;height:50px;display:flex;align-items:center;justify-content:center;}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#A32D2D;color:#fff;padding:8px 10px;text-align:left;font-size:11px;}
+    td{padding:8px 10px;border-bottom:1px solid #e8e8e4;font-size:12px;}
+    tr:nth-child(even){background:#f8f8f5;}
+    .cloz{color:#B45309;font-weight:700;}
+    .footer{font-size:10px;color:#aaa;margin-top:16px;text-align:center;}
+  </style></head><body>
+  <div class="header">
+    <div class="report-title">Missed Medication Report — ${r.route}</div>
+    <div class="report-sub">${dateStr} · ${timeStr} · Reported by: ${r.employee}</div>
+  </div>
+  <div class="sticker-box">[ Prescription sticker here ]</div>
+  <table>
+    <tr><th>#</th><th>Patient Name</th><th>Mental Health Team</th><th>Missed Med Times</th><th>High-Risk Flag</th></tr>
+    ${r.missedPatients.map((p,i)=>`<tr>
+      <td>${i+1}</td>
+      <td>${p.name}</td>
+      <td>${p.mht||'—'}</td>
+      <td>${p.missedSlots||'—'}</td>
+      <td class="cloz">${p.clozapine?'⚠ Clozapine':p.highRisk&&p.highRisk.length>0?'⚠ '+p.highRisk.join(', '):'—'}</td>
+    </tr>`).join('')}
+  </table>
+  <div class="footer">Total missed: ${r.missedPatients.length} · Generated: ${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</div>
+  </body></html>`;
+
+  const win=window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(()=>{
+    // Show print tip
+    win.document.title = 'Compliance Records - Tip: Uncheck Headers & Footers in print settings';
+    win.print();
+  },500);
+}
+
+function closeShiftModal(e){ 
+  if(e.target.id==='shift-modal'){ 
+    closeShiftAndReset();
+  } 
+}
+
+function closeShiftAndReset(){
+  document.getElementById('shift-modal').style.display='none';
+  resetShiftBtn();
+  if(pendingLogout){
+    doLogout();
+  }
+}
+
+function closeModal(e){ if(e.target.id==='modal') document.getElementById('modal').style.display='none'; }
+function closeEditModal(e){ if(e.target.id==='edit-modal') document.getElementById('edit-modal').style.display='none'; }
+
+// Live clock
+function updateClock(){
+  const now = new Date();
+  const dateEl = document.getElementById('clock-date');
+  const timeEl = document.getElementById('clock-time');
+  if(dateEl) dateEl.textContent = now.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  if(timeEl) timeEl.textContent = now.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// Wait for Firebase to initialize before loading
+function waitForFirebase(callback, attempts=0){
+  // Anonymous sign-in has to complete before Firestore will answer us, so this
+  // waits noticeably longer than it used to. If it does time out, load() runs
+  // in read-only mode rather than seeding defaults over live server data.
+  if(window._fbReady){ callback(); }
+  else if(window._authFailed){ console.warn('[init] auth failed - read-only mode'); callback(); }
+  else if(attempts < 150){ setTimeout(()=>waitForFirebase(callback, attempts+1), 100); }
+  else { console.warn('[init] timed out waiting for auth - read-only mode'); callback(); }
+}
+waitForFirebase(async ()=>{
+  startAppSettingsListener();
+  await load();
+  initEmpField(); initRoute(); renderSigContainer(); renderEmpLoginList();
+});
+
+// Init Firebase when ready
+document.addEventListener('firebase-ready', () => {
+  initFirebase();
+});
+// If already ready
+if(window._fbReady) initFirebase();
+</script>
+</body>
+</html>
