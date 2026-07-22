@@ -1735,10 +1735,14 @@ function resetBlisterPack(){
   isBlisterPack = false;
   const btn = document.getElementById('blister-pack-btn');
   const notice = document.getElementById('blister-pack-notice');
-  const wrap = document.getElementById('blister-pack-wrap');
   if(btn){ btn.className=''; btn.style.cssText='width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #e8e8e4;background:#fafaf8;color:#444;font-family:inherit;transition:all 0.15s;'; }
   if(notice) notice.style.display='none';
-  // wrap stays visible
+  // Restore the normal (non-blister) view: a prior blister-pack visit hides the
+  // medication schedule and signature box, so bring them back for the next patient.
+  const medWrap = document.getElementById('med-schedule-wrap');
+  if(medWrap) medWrap.style.display='block';
+  const sigC = document.getElementById('sig-container');
+  if(sigC) sigC.style.display='block';
 }
 
 function resetMedScheduleOnly(){
