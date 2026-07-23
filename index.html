@@ -739,11 +739,11 @@ function getEmpPin(name){ return getEmpPins()[name]||'1234'; }
 function saveEmpPin(name, pin){
   const saved = JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
   saved[name]=pin;
-  localStorage.setItem(EMP_PINS_KEY, JSON.stringify(saved));
+  safeSetItem(EMP_PINS_KEY, JSON.stringify(saved));
   syncDoc('emp_pins', saved, 'PIN for ' + name);
 }
 function saveManagerPin(pin){
-  localStorage.setItem(MANAGER_PIN_KEY, pin);
+  safeSetItem(MANAGER_PIN_KEY, pin);
   syncDoc('manager_pin', {pin}, 'Manager PIN');
 }
 
@@ -779,7 +779,7 @@ function pinPress(d){
         document.getElementById('main-app').style.display='block';
         if(currentRole==='employee'){
           selectedEmp=currentUser;
-          localStorage.setItem(EMP_KEY, currentUser);
+          safeSetItem(EMP_KEY, currentUser);
           initEmpField();
         }
         applyRoleAccess();
@@ -931,6 +931,35 @@ const PSIG_KEY  = 'rxsign_psigs_v5';
 const INIT_KEY  = 'rxsign_initialized_v6';
 
 let records = [], patients = [], staff = [], patientSigs = {};
+
+// ── Storage safety ────────────────────────────────────────────────────────
+// The browser only gives ~5MB of local storage. Signature images are large, so
+// it can fill up. A full cache must NEVER crash the app or be mistaken for a
+// database error, so every write goes through here: it frees space and retries,
+// then gives up quietly. (Uses bracket-notation internally so the global
+// setItem->safeSetItem rename below doesn't turn this into infinite recursion.)
+function safeSetItem(key, value){
+  try {
+    localStorage['setItem'](key, value);
+  } catch(e){
+    console.warn('[storage] quota hit on '+key+' - freeing space');
+    try {
+      localStorage.removeItem(PSIG_KEY);                 // signatures live in Firestore
+      const slim = (records||[]).map(r=>{ const c={...r}; delete c.signature; delete c.controlledSignatures; return c; });
+      localStorage['setItem'](REC_KEY, JSON.stringify(slim));
+      localStorage['setItem'](key, value);               // retry once
+    } catch(e2){
+      console.warn('[storage] still over quota after cleanup; skipping local cache of '+key);
+    }
+  }
+}
+// Cache visit records WITHOUT their heavy base64 signatures (kept in memory + Firestore).
+function cacheRecordsLocal(){
+  try {
+    const slim = (records||[]).map(r=>{ const c={...r}; delete c.signature; delete c.controlledSignatures; return c; });
+    safeSetItem(REC_KEY, JSON.stringify(slim));
+  } catch(e){ console.warn('[storage] cacheRecordsLocal failed', e); }
+}
 // True only after a full, successful Firestore read this session.
 // While false, the app must NEVER write shared data upward — a stale or
 // empty local cache must not be allowed to overwrite good server data.
@@ -944,6 +973,7 @@ async function load() {
   try { staff       = JSON.parse(localStorage.getItem(STAFF_KEY)||'[]'); } catch(e){ staff=[]; }
   try { patients    = JSON.parse(localStorage.getItem(PAT_KEY)  ||'[]'); } catch(e){ patients=[]; }
   try { patientSigs = JSON.parse(localStorage.getItem(PSIG_KEY) ||'{}'); } catch(e){ patientSigs={}; }
+  try { localStorage.removeItem(PSIG_KEY); } catch(e){} // reclaim space; sigs come from Firestore
 
   // Auto-purge records older than 3 months (records are per-device, local only)
   const threeMonthsAgo = new Date();
@@ -960,31 +990,30 @@ async function load() {
       if(sSnap.exists() && Array.isArray(sSnap.data().staff)){
         staffDocExists = true;
         staff = sSnap.data().staff;
-        localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+        safeSetItem(STAFF_KEY, JSON.stringify(staff));
       }
       const pSnap = await window._getDoc(window._doc(window._db,'app_settings','patients'));
       if(pSnap.exists() && Array.isArray(pSnap.data().patients)){
         patientsDocExists = true;
         patients = pSnap.data().patients;
-        localStorage.setItem(PAT_KEY, JSON.stringify(patients));
-        localStorage.setItem(INIT_KEY,'1');
+        safeSetItem(PAT_KEY, JSON.stringify(patients));
+        safeSetItem(INIT_KEY,'1');
       }
       const pinSnap = await window._getDoc(window._doc(window._db,'app_settings','emp_pins'));
       if(pinSnap.exists()){
-        localStorage.setItem(EMP_PINS_KEY, JSON.stringify(pinSnap.data()));
+        safeSetItem(EMP_PINS_KEY, JSON.stringify(pinSnap.data()));
       }
       const mgSnap = await window._getDoc(window._doc(window._db,'app_settings','manager_pin'));
       if(mgSnap.exists() && mgSnap.data().pin){
-        localStorage.setItem(MANAGER_PIN_KEY, mgSnap.data().pin);
+        safeSetItem(MANAGER_PIN_KEY, mgSnap.data().pin);
       }
       const sigSnap = await window._getDoc(window._doc(window._db,'app_settings','patient_sigs'));
       if(sigSnap.exists() && sigSnap.data().sigs){
         patientSigs = JSON.parse(sigSnap.data().sigs);
-        localStorage.setItem(PSIG_KEY, JSON.stringify(patientSigs));
       }
       const offSnap = await window._getDoc(window._doc(window._db,'app_settings','office_pin'));
       if(offSnap.exists() && offSnap.data().pin){
-        localStorage.setItem(OFFICE_PIN_KEY, offSnap.data().pin);
+        safeSetItem(OFFICE_PIN_KEY, offSnap.data().pin);
       }
       // ── One-time PIN migration ────────────────────────────────────────
       // Copy every current staff member's effective PIN into Firestore so the
@@ -1003,7 +1032,7 @@ async function load() {
         });
         if (pinsChanged) {
           await window._setDoc(window._doc(window._db,'app_settings','emp_pins'), mergedPins);
-          localStorage.setItem(EMP_PINS_KEY, JSON.stringify(mergedPins));
+          safeSetItem(EMP_PINS_KEY, JSON.stringify(mergedPins));
           console.log('[pin-migrate] synced', Object.keys(mergedPins).length, 'staff PINs to Firestore');
         }
       } catch(e){ console.error('[pin-migrate] failed:', e); }
@@ -1029,7 +1058,7 @@ async function load() {
   }
   if(remoteLoadOK && !patientsDocExists && patients.length===0){
     patients = DEFAULT_PATIENTS.map(p=>({controlled:false,controlledCount:0,...p}));
-    localStorage.setItem(INIT_KEY,'1');
+    safeSetItem(INIT_KEY,'1');
     savePat();
   }
 
@@ -1040,7 +1069,7 @@ async function load() {
     ['Kimberly Chin','Robert Milroy'].forEach(name=>{
       if(savedPins[name]){ delete savedPins[name]; cleaned=true; }
     });
-    if(cleaned) localStorage.setItem(EMP_PINS_KEY, JSON.stringify(savedPins));
+    if(cleaned) safeSetItem(EMP_PINS_KEY, JSON.stringify(savedPins));
   }catch(e){}
 
   // ── Phase 4: schema migrations, persisted only when the server is authoritative ──
@@ -1049,7 +1078,36 @@ async function load() {
   patients.forEach(p=>{ if(!p.programs){ p.programs=['MMP']; migrated=true; } });
   if(migrated && remoteLoadOK) savePat();
 }
-function saveRec()  { localStorage.setItem(REC_KEY,  JSON.stringify(records)); }
+function saveRec()  { cacheRecordsLocal(); }
+
+// ── Unsynced-visit safety net ─────────────────────────────────────────────
+// A visit recorded while the server is unreachable is held here until it is
+// confirmed saved, then retried automatically. Prevents silent record loss.
+const PENDING_KEY = 'rxsign_pending_visits_v1';
+function getPendingVisits(){ try{ return JSON.parse(localStorage.getItem(PENDING_KEY)||'[]'); }catch(e){ return []; } }
+function setPendingVisits(a){ safeSetItem(PENDING_KEY, JSON.stringify(a)); }
+function addPendingVisit(rec){ const a=getPendingVisits(); if(!a.find(r=>r.id===rec.id)){ a.push(rec); setPendingVisits(a); } }
+function removePendingVisit(id){ setPendingVisits(getPendingVisits().filter(r=>r.id!==id)); }
+async function _writeVisit(rec){
+  const patientId = rec.patient.replace(/[^a-zA-Z0-9]/g,'_');
+  await window._setDoc(window._doc(window._db,'patients',patientId),
+    { name: rec.patient, mht: rec.mht||'', doctor: rec.doctor||'', lastUpdated: rec.timestamp }, { merge:true });
+  await window._setDoc(window._doc(window._db,'patients',patientId,'visits',rec.id), rec);
+}
+let _flushing=false;
+async function flushPendingVisits(){
+  if(_flushing || !window._fbReady) return;
+  const pend=getPendingVisits();
+  if(!pend.length){ return; }
+  _flushing=true;
+  updateSyncBadge('syncing');
+  for(const rec of pend){
+    try{ await _writeVisit(rec); removePendingVisit(rec.id); }
+    catch(e){ console.warn('[flush] still failing for', rec.id, e); break; }
+  }
+  _flushing=false;
+  updateSyncBadge(getPendingVisits().length ? 'pending' : 'synced');
+}
 
 // ── Firebase sync ──
 // In-memory PIN cache — updated by real-time listener
@@ -1064,32 +1122,32 @@ function startAppSettingsListener(){
     if(snap.exists()){
       const data = snap.data();
       livePins = data; // Update in-memory cache instantly
-      localStorage.setItem(EMP_PINS_KEY, JSON.stringify(data));
+      safeSetItem(EMP_PINS_KEY, JSON.stringify(data));
       console.log('PINs updated from Firebase instantly');
     }
   });
   window._onSnapshot(window._doc(window._db,'app_settings','manager_pin'), snap=>{
     if(snap.exists() && snap.data().pin){
       liveManagerPin = snap.data().pin; // Update in-memory
-      localStorage.setItem(MANAGER_PIN_KEY, snap.data().pin);
+      safeSetItem(MANAGER_PIN_KEY, snap.data().pin);
     }
   });
   window._onSnapshot(window._doc(window._db,'app_settings','office_pin'), snap=>{
     if(snap.exists() && snap.data().pin){
       liveOfficePin = snap.data().pin; // Update in-memory
-      localStorage.setItem(OFFICE_PIN_KEY, snap.data().pin);
+      safeSetItem(OFFICE_PIN_KEY, snap.data().pin);
     }
   });
   window._onSnapshot(window._doc(window._db,'app_settings','staff_list'), snap=>{
     if(snap.exists() && snap.data().staff?.length){
       staff = snap.data().staff;
-      localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+      safeSetItem(STAFF_KEY, JSON.stringify(staff));
     }
   });
   window._onSnapshot(window._doc(window._db,'app_settings','patients'), snap=>{
     if(snap.exists() && snap.data().patients?.length){
       patients = snap.data().patients;
-      localStorage.setItem(PAT_KEY, JSON.stringify(patients));
+      safeSetItem(PAT_KEY, JSON.stringify(patients));
     }
   });
 }
@@ -1104,7 +1162,8 @@ function updateSyncBadge(status){
     local:   {text:'Offline mode', color:'#999',  bg:'#f0f0ec'},
     syncing: {text:'Syncing...',   color:'#854F0B', bg:'#FAEEDA'},
     synced:  {text:'Live ✓',       color:'#3B6D11', bg:'#EAF3DE'},
-    error:   {text:'Sync error',   color:'#A32D2D', bg:'#FCEBEB'}
+    error:   {text:'Sync error',   color:'#A32D2D', bg:'#FCEBEB'},
+    pending: {text:'Not synced ⏳', color:'#854F0B', bg:'#FAEEDA'}
   };
   const s = states[status];
   badge.textContent = s.text;
@@ -1144,8 +1203,12 @@ function initFirebase(){
       const results = await Promise.all(promises);
       allRecords = results.flat().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
       records = allRecords;
-      localStorage.setItem(REC_KEY, JSON.stringify(records));
-      updateSyncBadge('synced');
+      // Preserve any not-yet-synced local visits so a server refresh can't drop them
+      getPendingVisits().forEach(pr => { if(!records.find(r=>r.id===pr.id)) records.unshift(pr); });
+      records.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+      cacheRecordsLocal();
+      flushPendingVisits();
+      updateSyncBadge(getPendingVisits().length ? 'pending' : 'synced');
       const activeTab = document.querySelector('.screen.active')?.id;
             if(activeTab === 'screen-compliance'){ renderCompliance(); populateMonthDropdown(); }
     }, (err) => {
@@ -1159,26 +1222,19 @@ function initFirebase(){
 }
 
 async function saveRecFirebase(rec){
-  if(!window._fbReady) return;
+  // Returns true only if the visit is confirmed saved on the server.
+  if(!window._fbReady){ addPendingVisit(rec); updateSyncBadge('error'); return false; }
   try {
     updateSyncBadge('syncing');
-    // Store under patients/{patientId}/visits/{recordId}
-    const patientId = rec.patient.replace(/[^a-zA-Z0-9]/g,'_');
-    // Update patient info doc
-    await window._setDoc(
-      window._doc(window._db, 'patients', patientId),
-      { name: rec.patient, mht: rec.mht||'', doctor: rec.doctor||'', lastUpdated: rec.timestamp },
-      { merge: true }
-    );
-    // Add visit record
-    await window._setDoc(
-      window._doc(window._db, 'patients', patientId, 'visits', rec.id),
-      rec
-    );
-    updateSyncBadge('synced');
+    await _writeVisit(rec);
+    removePendingVisit(rec.id);
+    updateSyncBadge(getPendingVisits().length ? 'pending' : 'synced');
+    return true;
   } catch(e) {
     console.error('Save error:', e);
+    addPendingVisit(rec);
     updateSyncBadge('error');
+    return false;
   }
 }
 
@@ -1218,15 +1274,15 @@ function syncDoc(docName, payload, label){
 }
 
 function savePat(){
-  localStorage.setItem(PAT_KEY, JSON.stringify(patients));
+  safeSetItem(PAT_KEY, JSON.stringify(patients));
   syncDoc('patients', {patients}, 'Patient list');
 }
 function saveStaff(){
-  localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+  safeSetItem(STAFF_KEY, JSON.stringify(staff));
   syncDoc('staff_list', {staff}, 'Staff list');
 }
 function savePSigs(){
-  localStorage.setItem(PSIG_KEY, JSON.stringify(patientSigs));
+  // Signatures are stored in Firestore only; caching them locally overflows the browser.
   syncDoc('patient_sigs', {sigs: JSON.stringify(patientSigs)}, 'Patient signatures');
 }
 
@@ -1298,7 +1354,7 @@ function hideEmpAC(){ document.getElementById('emp-ac-list').style.display='none
 
 function selectEmp(name){
   selectedEmp=name;
-  localStorage.setItem(EMP_KEY, name);
+  safeSetItem(EMP_KEY, name);
   hideEmpAC();
   showEmpBadge(name);
 }
@@ -1974,7 +2030,7 @@ function selectRouteAndStart(route){
 
 function selectRoute(route){
   selectedRoute=route;
-  localStorage.setItem(ROUTE_KEY, route);
+  safeSetItem(ROUTE_KEY, route);
   showRouteBadge(route);
 }
 
@@ -2322,13 +2378,22 @@ function saveRecord(){
   };
   records.unshift(newRec);
   saveRec();
-  saveRecFirebase(newRec);
+  addPendingVisit(newRec);                 // hold until the server confirms
+  // Clear the form right away so staff can move on
   clearSig(); selectedPat=null; usingSavedSig=false; resetMedSchedule();
   document.getElementById('pat-name').value=''; document.getElementById('notes').value='';
   document.getElementById('mht-display').style.display='none';
   renderSigContainer();
-  msg.className='msg ok'; msg.textContent='✓ Saved successfully!';
-  setTimeout(()=>{msg.textContent='';msg.className='msg';},3000);
+  msg.className='msg'; msg.textContent='Saving…';
+  saveRecFirebase(newRec).then(ok=>{
+    if(ok){
+      msg.className='msg ok'; msg.textContent='✓ Saved & synced';
+      setTimeout(()=>{ if(getPendingVisits().length===0){ msg.textContent=''; msg.className='msg'; } },3000);
+    } else {
+      msg.className='msg err';
+      msg.textContent='⚠ Saved on this phone but NOT on the server yet. It will retry automatically — keep the app open and wait for the badge to show Live ✓ before you leave.';
+    }
+  });
 }
 
 /* ── Roster ── */
@@ -2757,7 +2822,7 @@ function changeManagerPin(){
 }
 
 function saveOfficePin(pin){
-  localStorage.setItem(OFFICE_PIN_KEY, pin);
+  safeSetItem(OFFICE_PIN_KEY, pin);
   syncDoc('office_pin', {pin}, 'Office PIN');
 }
 function changeOfficePin(){
@@ -2858,7 +2923,7 @@ function removeStaff(name){
     const pins = JSON.parse(localStorage.getItem(EMP_PINS_KEY)||'{}');
     if (pins[name] !== undefined) {
       delete pins[name];
-      localStorage.setItem(EMP_PINS_KEY, JSON.stringify(pins));
+      safeSetItem(EMP_PINS_KEY, JSON.stringify(pins));
       if (window._fbReady && remoteLoadOK) {
         window._setDoc(window._doc(window._db,'app_settings','emp_pins'), pins)
           .catch(e => console.error('[removeStaff] PIN cleanup failed:', e));
@@ -3066,7 +3131,7 @@ let currentMissedList = []; // Store missed patients from checklist
 function getMissedReports(){
   try{ return JSON.parse(localStorage.getItem(MISSED_KEY)||'[]'); }catch(e){ return []; }
 }
-function saveMissedReports(reports){ localStorage.setItem(MISSED_KEY, JSON.stringify(reports)); }
+function saveMissedReports(reports){ safeSetItem(MISSED_KEY, JSON.stringify(reports)); }
 
 function showEndShift(){
   currentShiftRoute = selectedRoute||'';
@@ -3232,7 +3297,7 @@ async function saveMissedReport(){
   const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
   existing = existing.filter(r=>new Date(r.date)>=sevenDaysAgo);
   existing.unshift(report);
-  localStorage.setItem(MISSED_KEY, JSON.stringify(existing));
+  safeSetItem(MISSED_KEY, JSON.stringify(existing));
 
   // Save to Firebase
   if(window._fbReady){
@@ -3284,7 +3349,7 @@ async function renderMissedReports(){
           reports.push(r);
         }
       });
-      try{ localStorage.setItem(MISSED_KEY, JSON.stringify(reports)); }catch(e){}
+      try{ safeSetItem(MISSED_KEY, JSON.stringify(reports)); }catch(e){}
     } catch(e){ console.log('Firebase missed:', e); }
   }
 
@@ -3438,6 +3503,9 @@ waitForFirebase(async ()=>{
   startAppSettingsListener();
   await load();
   initEmpField(); initRoute(); renderSigContainer(); renderEmpLoginList();
+  flushPendingVisits();
+  setInterval(flushPendingVisits, 30000);        // retry unsynced visits every 30s
+  window.addEventListener('online', flushPendingVisits);
 });
 
 // Init Firebase when ready
