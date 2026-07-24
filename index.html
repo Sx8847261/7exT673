@@ -2384,16 +2384,22 @@ function saveRecord(){
   document.getElementById('pat-name').value=''; document.getElementById('notes').value='';
   document.getElementById('mht-display').style.display='none';
   renderSigContainer();
-  msg.className='msg'; msg.textContent='Saving…';
+  // The visit is already stored locally and queued for sync, so confirm RIGHT AWAY.
+  // Waiting for the server to answer left staff stuck on "Saving…" on weak signal.
+  msg.className='msg ok'; msg.textContent='\u2713 Saved';
+  let _acked=false;
   saveRecFirebase(newRec).then(ok=>{
+    _acked=true;
     if(ok){
-      msg.className='msg ok'; msg.textContent='✓ Saved & synced';
-      setTimeout(()=>{ if(getPendingVisits().length===0){ msg.textContent=''; msg.className='msg'; } },3000);
+      msg.className='msg ok'; msg.textContent='\u2713 Saved & synced';
+      setTimeout(()=>{ if(getPendingVisits().length===0 && msg.textContent==='\u2713 Saved & synced'){ msg.textContent=''; msg.className='msg'; } },3000);
     } else {
-      msg.className='msg err';
-      msg.textContent='⚠ Saved on this phone but NOT on the server yet. It will retry automatically — keep the app open and wait for the badge to show Live ✓ before you leave.';
+      // Safely stored on this device; the retry queue will sync it when back online.
+      msg.className='msg ok'; msg.textContent='\u2713 Saved \u2014 will sync when back online';
     }
   });
+  // If the server is slow to answer, reassure that it's saved and still syncing.
+  setTimeout(()=>{ if(!_acked && msg.textContent==='\u2713 Saved'){ msg.textContent='\u2713 Saved \u2014 syncing\u2026'; } }, 2500);
 }
 
 /* ── Roster ── */
@@ -3256,11 +3262,14 @@ async function saveMissedReport(){
   const today = new Date().toDateString();
   const norm = s => (s||'').replace(/[\s\-]/g,'').toLowerCase();
 
-  // Find all records from today with ANY M in med schedule
+  // Find records from today with ANY M in med schedule, ON THIS ROUTE ONLY.
+  // (Previously this ignored the route, so an R1 report also swept in R2's
+  //  missed patients — the same list ended up saved under both routes.)
   const allMissed = records.filter(r => {
     const sameDay = new Date(r.timestamp).toDateString() === today;
     const hasM = Object.values(r.medSchedule||{}).some(v=>v==='M');
-    return sameDay && hasM;
+    const sameRoute = norm(r.visitType) === norm(currentShiftRoute);
+    return sameDay && hasM && sameRoute;
   });
 
   if(!allMissed.length){
