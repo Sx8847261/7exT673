@@ -2226,11 +2226,13 @@ function renderSigContainer(){
     for(let i=0;i<selectedPat.controlledCount;i++){
       html+=`<div class="sig-section controlled">
         <div class="sig-section-title">⚠ Controlled Medication ${selectedPat.controlledCount>1?'#'+(i+1):''} Signature</div>
+        ${hasSaved?`<button class="btn success" style="margin-bottom:8px;" id="use-saved-ctrl-btn-${i}" onclick="useSavedControlledSig(${i})">✓ Use ${selectedPat.name}'s saved signature</button>`:''}
         <div class="sig-wrap" id="sig-controlled-wrap-${i}">
           <canvas id="sig-canvas-controlled-${i}"></canvas>
           <p class="sig-hint">Patient signs for controlled med</p>
         </div>
-        <button class="btn ghost" onclick="clearOneSig('controlled_${i}')">↺ Clear</button>
+        ${hasSaved?`<img id="sig-ctrl-saved-preview-${i}" src="${patientSigs[selectedPat.name]}" style="display:none;width:100%;height:70px;object-fit:contain;background:#f8fff8;border-radius:10px;margin-top:6px;">`:''}
+        <button class="btn ghost" id="clear-ctrl-btn-${i}" onclick="clearOneControlledSig(${i})">↺ Clear</button>
       </div>`;
     }
   }
@@ -2266,6 +2268,10 @@ function useSavedSig(){
   document.getElementById('sig-regular-wrap').style.display='none';
   const preview=document.getElementById('sig-saved-preview');
   if(preview) preview.style.display='block';
+  // One tap fills every controlled-medication pad with the same saved signature too.
+  if(selectedPat && selectedPat.controlled && selectedPat.controlledCount>0){
+    for(let i=0;i<selectedPat.controlledCount;i++){ useSavedControlledSig(i); }
+  }
 }
 
 function switchToFresh(){
@@ -2331,10 +2337,31 @@ function getSigData(){
   return null;
 }
 function getAllSigData(){
-  const result={};
+  // Always include any controlled signatures (drawn or reused from the saved one),
+  // then override 'regular' with the saved signature if that one is being reused.
+  const result={...signatures};
   if(usingSavedSig&&selectedPat){ result['regular']=patientSigs[selectedPat.name]; }
-  else { Object.assign(result, signatures); }
   return result;
+}
+// Reuse the patient's saved signature for a controlled-medication pad (compliance-approved).
+// Storage-neutral: points at the signature already on file, adds nothing to the database.
+function useSavedControlledSig(i){
+  if(!selectedPat || !patientSigs[selectedPat.name]) return;
+  signatures['controlled_'+i] = patientSigs[selectedPat.name];
+  const btn=document.getElementById('use-saved-ctrl-btn-'+i); if(btn) btn.style.display='none';
+  const wrap=document.getElementById('sig-controlled-wrap-'+i); if(wrap) wrap.style.display='none';
+  const preview=document.getElementById('sig-ctrl-saved-preview-'+i); if(preview) preview.style.display='block';
+}
+// Clear a controlled pad and restore the draw/reuse options.
+function clearOneControlledSig(i){
+  delete signatures['controlled_'+i];
+  const wrap=document.getElementById('sig-controlled-wrap-'+i); if(wrap) wrap.style.display='';
+  const preview=document.getElementById('sig-ctrl-saved-preview-'+i); if(preview) preview.style.display='none';
+  const btn=document.getElementById('use-saved-ctrl-btn-'+i); if(btn) btn.style.display='';
+  if(sigCanvases['controlled_'+i]){
+    const ctx=sigCanvases['controlled_'+i].getContext('2d');
+    ctx.clearRect(0,0,sigCanvases['controlled_'+i].width,sigCanvases['controlled_'+i].height);
+  }
 }
 
 /* ── Save record ── */
