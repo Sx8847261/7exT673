@@ -705,6 +705,19 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
   </div>
 </div>
 
+<div id="rec-edit-modal" class="modal-backdrop" style="display:none;" onclick="closeRecEdit(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3>Edit visit — medication schedule</h3>
+    <p id="rec-edit-sub" style="font-size:12px;color:#888;margin:4px 0 12px;"></p>
+    <div id="rec-edit-slots"></div>
+    <p style="font-size:11px;color:#888;margin-top:10px;">Tap W / C / M to set a slot; tap the active one again to clear it. Saved as a manager correction — no signature is collected.</p>
+    <button class="btn primary" onclick="saveVisitRecordEdit()">Save changes</button>
+    <button class="btn ghost" onclick="closeRecEdit()">Cancel</button>
+    <div id="rec-edit-msg" class="msg"></div>
+  </div>
+</div>
+
 <script>
 // ── Pre-loaded patient data from PDF ──
 // Format: {name: "First Last", mht: "", doctor: "Dr. Name", docPhone: ""}
@@ -3096,9 +3109,13 @@ function openPatientModal(enc){
       html+='<div style="display:flex;justify-content:space-between;align-items:center;">';
       html+='<div><div style="font-size:12px;font-weight:700;">'+formatDate(r.timestamp)+'</div>';
       html+='<div style="font-size:11px;color:#888;">&#128100; '+r.employee+' &middot; '+r.visitType+'</div></div>';
+      html+='<div style="display:flex;gap:6px;">';
+      html+='<button data-rid="'+r.id+'" onclick="event.stopPropagation();editVisitRecord(this.dataset.rid)" style="background:#F3E6F0;border:none;color:#A22C89;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;">Edit</button>';
       html+='<button data-rid="'+r.id+'" onclick="event.stopPropagation();deleteRecord(this.dataset.rid)" style="background:#FCEBEB;border:none;color:#A32D2D;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;">Delete</button>';
       html+='</div>';
+      html+='</div>';
       if(slotHtml) html+='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">'+slotHtml+'</div>';
+      if(r.editedBy) html+='<div style="font-size:10px;color:#A22C89;margin-top:4px;">\u270e Edited by '+r.editedBy+(r.editedAt?' \u00b7 '+formatDate(r.editedAt):'')+'</div>';
       if(r.signature && r.signature.length > 1000) html+='<button data-rid="'+r.id+'" onclick="event.stopPropagation();viewSig(this.dataset.rid)" style="margin-top:6px;background:#E6F1FB;border:none;color:#185FA5;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;">&#9998; View signature</button>';
       if(r.unableToSign) html+='<div style="font-size:11px;color:#B45309;background:#FFF9E6;padding:4px 10px;border-radius:8px;margin-top:4px;">⚠ Patient unable to sign: '+r.unableToSign+'</div>';
       else html+='<div style="font-size:10px;color:#aaa;margin-top:4px;">No signature &mdash; missed or carried</div>';
@@ -3128,6 +3145,63 @@ function deleteRecord(id){
   records=records.filter(r=>r.id!==id); saveRec(); deleteRecFirebase(id, recToDelete?.patient);
   document.getElementById('modal').style.display='none';
   renderCompliance();
+}
+
+// ── Manager: in-place edit of a saved visit's medication schedule ──
+// Changes W/C/M directly on the record. No re-record, no signature required
+// (used for after-the-fact corrections like missed -> taken on a callback).
+let _recEditId=null, _recEditSchedule={};
+function editVisitRecord(id){
+  const rec = records.find(r=>r.id===id);
+  if(!rec) return;
+  _recEditId = id;
+  _recEditSchedule = {...(rec.medSchedule||{})};
+  document.getElementById('rec-edit-sub').textContent = rec.patient + '  \u00b7  ' + formatDate(rec.timestamp) + '  \u00b7  ' + rec.visitType;
+  const em=document.getElementById('rec-edit-msg'); if(em){ em.textContent=''; em.className='msg'; }
+  renderRecEditSlots();
+  document.getElementById('rec-edit-modal').style.display='flex';
+}
+function renderRecEditSlots(){
+  const slots=['morning','lunch','dinner','bedtime','prn'];
+  const cls={W:'active-w',C:'active-c',M:'active-m'};
+  let html='';
+  slots.forEach(function(sname){
+    const cur=_recEditSchedule[sname]||'';
+    html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+    html+='<div style="width:72px;font-size:13px;font-weight:600;color:#1a1a1a;">'+sname.charAt(0).toUpperCase()+sname.slice(1)+'</div>';
+    html+='<div style="display:flex;gap:6px;flex:1;">';
+    ['W','C','M'].forEach(function(v){
+      html+='<button class="med-btn'+(cur===v?' '+cls[v]:'')+'" style="flex:1;" onclick="setRecEditSlot(\''+sname+'\',\''+v+'\')">'+v+'</button>';
+    });
+    html+='</div></div>';
+  });
+  document.getElementById('rec-edit-slots').innerHTML=html;
+}
+function setRecEditSlot(slot,val){
+  if(_recEditSchedule[slot]===val) delete _recEditSchedule[slot];
+  else _recEditSchedule[slot]=val;
+  renderRecEditSlots();
+}
+function closeRecEdit(e){
+  if(e && e.target && e.target.id!=='rec-edit-modal') return;
+  document.getElementById('rec-edit-modal').style.display='none';
+  _recEditId=null;
+}
+function saveVisitRecordEdit(){
+  const rec = records.find(r=>r.id===_recEditId);
+  if(!rec){ closeRecEdit(); return; }
+  rec.medSchedule = {..._recEditSchedule};
+  rec.editedBy = (currentRole==='manager') ? ('Manager ('+currentUser+')') : (currentUser||'Staff');
+  rec.editedAt = new Date().toISOString();
+  saveRec();
+  saveRecFirebase(rec);   // overwrites the visit document with the corrected schedule
+  document.getElementById('rec-edit-modal').style.display='none';
+  const pn = rec.patient;
+  _recEditId=null;
+  // Re-render so the change shows immediately
+  const m=document.getElementById('modal');
+  if(m && m.style.display!=='none') openPatientModal(encodeURIComponent(pn));
+  if(typeof renderCompliance==='function') renderCompliance();
 }
 /* ── End of Shift & Missed Med Reports ── */
 const MISSED_KEY = 'rxsign_missed_v7'; // bumped to force fresh storage
