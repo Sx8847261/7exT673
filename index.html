@@ -411,7 +411,7 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
             <button class="med-btn" id="med-morning-c" onclick="toggleMed('morning','C')">C</button>
             <button class="med-btn" id="med-morning-m" onclick="toggleMed('morning','M')">M</button>
           </div>
-          <div class="next-day-wrap" id="nd-morning"><input type="checkbox" id="nd-morning-chk" onchange="toggleNextDay('morning')"><label class="next-day-label" for="nd-morning-chk">Next day</label></div>
+          <div class="next-day-wrap" id="nd-morning"><input type="checkbox" id="nd-morning-chk" onchange="toggleNextDay('morning')"><label class="next-day-label" for="nd-morning-chk">Carry next day</label></div>
         </div>
         <div class="med-slot">
           <div class="med-slot-label">Lunch</div>
@@ -420,7 +420,7 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
             <button class="med-btn" id="med-lunch-c" onclick="toggleMed('lunch','C')">C</button>
             <button class="med-btn" id="med-lunch-m" onclick="toggleMed('lunch','M')">M</button>
           </div>
-          <div class="next-day-wrap" id="nd-lunch"><input type="checkbox" id="nd-lunch-chk" onchange="toggleNextDay('lunch')"><label class="next-day-label" for="nd-lunch-chk">Next day</label></div>
+          <div class="next-day-wrap" id="nd-lunch"><input type="checkbox" id="nd-lunch-chk" onchange="toggleNextDay('lunch')"><label class="next-day-label" for="nd-lunch-chk">Carry next day</label></div>
         </div>
         <div class="med-slot">
           <div class="med-slot-label">Dinner</div>
@@ -429,7 +429,7 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
             <button class="med-btn" id="med-dinner-c" onclick="toggleMed('dinner','C')">C</button>
             <button class="med-btn" id="med-dinner-m" onclick="toggleMed('dinner','M')">M</button>
           </div>
-          <div class="next-day-wrap" id="nd-dinner"><input type="checkbox" id="nd-dinner-chk" onchange="toggleNextDay('dinner')"><label class="next-day-label" for="nd-dinner-chk">Next day</label></div>
+          <div class="next-day-wrap" id="nd-dinner"><input type="checkbox" id="nd-dinner-chk" onchange="toggleNextDay('dinner')"><label class="next-day-label" for="nd-dinner-chk">Carry next day</label></div>
         </div>
         <div class="med-slot">
           <div class="med-slot-label">Bedtime</div>
@@ -438,7 +438,7 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
             <button class="med-btn" id="med-bedtime-c" onclick="toggleMed('bedtime','C')">C</button>
             <button class="med-btn" id="med-bedtime-m" onclick="toggleMed('bedtime','M')">M</button>
           </div>
-          <div class="next-day-wrap" id="nd-bedtime"><input type="checkbox" id="nd-bedtime-chk" onchange="toggleNextDay('bedtime')"><label class="next-day-label" for="nd-bedtime-chk">Next day</label></div>
+          <div class="next-day-wrap" id="nd-bedtime"><input type="checkbox" id="nd-bedtime-chk" onchange="toggleNextDay('bedtime')"><label class="next-day-label" for="nd-bedtime-chk">Carry next day</label></div>
         </div>
         <div class="med-slot">
           <div class="med-slot-label">PRN</div>
@@ -1721,7 +1721,7 @@ function editTodayVisit(recId){
   ['morning','lunch','dinner','bedtime','prn'].forEach(slot=>{
     setMedBtnStates(slot, ms[slot]);
     const ndWrap=document.getElementById('nd-'+slot);
-    if(ndWrap) ndWrap.className='next-day-wrap'+(ms[slot]==='C'&&nd[slot]?' show':'');
+    if(ndWrap) ndWrap.className='next-day-wrap'+((ms[slot]==='C'||ms[slot]==='W')&&nd[slot]?' show':'');
     const ndChk=document.getElementById('nd-'+slot+'-chk');
     if(ndChk) ndChk.checked=nd[slot]||false;
   });
@@ -2063,8 +2063,9 @@ function setMedBtnStates(slot, val){
 function toggleMed(slot, val){
   // Toggle — if already selected deselect it
   medSchedule[slot] = medSchedule[slot]===val ? null : val;
-  // If switching away from C, clear next day
-  if(medSchedule[slot]!=='C'){
+  // Clear the carry-next-day flag only when the slot is Missed or unselected.
+  // (Witnessed and Carried can both have a next-day carry.)
+  if(medSchedule[slot]!=='C' && medSchedule[slot]!=='W'){
     medNextDay[slot] = false;
     const chk = document.getElementById('nd-'+slot+'-chk');
     if(chk) chk.checked = false;
@@ -2073,7 +2074,7 @@ function toggleMed(slot, val){
   setMedBtnStates(slot, medSchedule[slot]);
   // Show/hide next day checkbox — only when C is selected
   const ndWrap = document.getElementById('nd-'+slot);
-  if(ndWrap) ndWrap.className = 'next-day-wrap' + (medSchedule[slot]==='C'?' show':'');
+  if(ndWrap) ndWrap.className = 'next-day-wrap' + ((medSchedule[slot]==='C'||medSchedule[slot]==='W')?' show':'');
   // Update signature state
   checkMissedState();
 }
@@ -2688,7 +2689,7 @@ function exportCSV(){
       const pat=patients.find(p=>p.name===g.patient);
       const clozFlag=pat?.clozapine?'YES':'';
       const hrFlag=(pat?.highRisk&&pat.highRisk.length>0)?pat.highRisk.join(' | '):'';
-      csv+=`"${g.patient}","${g.mht}","${clozFlag}","${hrFlag}","${d}","${time}","${v.type}","${v.emp}","${getInitials(v.emp)}","${ms.morning||''}","${ms.lunch||''}","${ms.dinner||''}","${ms.bedtime||''}","${ms.prn||''}","${v.notes}"\n`;
+      csv+=`"${g.patient}","${g.mht}","${clozFlag}","${hrFlag}","${d}","${time}","${v.type}","${v.emp}","${getInitials(v.emp)}","${(ms.morning||'')+((v.medNextDay||{}).morning?'*':'')}","${(ms.lunch||'')+((v.medNextDay||{}).lunch?'*':'')}","${(ms.dinner||'')+((v.medNextDay||{}).dinner?'*':'')}","${(ms.bedtime||'')+((v.medNextDay||{}).bedtime?'*':'')}","${ms.prn||''}","${v.notes}"\n`;
     });
     csv+="\n";
   });
@@ -2752,10 +2753,11 @@ function buildPageHTML(patientName, mht, label, labelColor, visits, monthLabel, 
           }
           if(!ms[s]) return '<td style="text-align:center;color:#bbb;">—</td>';
           if(ms[s]==='W'){
+            const carry = nd[s] ? '<div style="font-size:9px;font-weight:700;color:#185FA5;margin-top:1px;">+ C* carry</div>' : '';
             const wsig = ctrlSigKey ? (v.controlledSignatures && v.controlledSignatures[ctrlSigKey]) : v.sig;
-            if(wsig) return '<td style="text-align:center;padding:2px;"><img src="'+wsig+'" style="max-width:80px;max-height:36px;display:block;margin:0 auto;"></td>';
-            if(v.unableToSign) return '<td style="text-align:center;font-weight:700;color:#B45309;background:#FFF9E6;font-size:10px;">Unable to sign</td>';
-            return '<td style="text-align:center;color:#bbb;">\u2014</td>';
+            if(wsig) return '<td style="text-align:center;padding:2px;"><img src="'+wsig+'" style="max-width:80px;max-height:36px;display:block;margin:0 auto;">'+carry+'</td>';
+            if(v.unableToSign) return '<td style="text-align:center;font-weight:700;color:#B45309;background:#FFF9E6;font-size:10px;">Unable to sign'+carry+'</td>';
+            return '<td style="text-align:center;color:#bbb;">\u2014'+carry+'</td>';
           }
           if(ms[s]==='C'){
             const nextDay=nd[s]?'*':'';
