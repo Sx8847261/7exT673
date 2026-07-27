@@ -443,11 +443,9 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
         <div class="med-slot">
           <div class="med-slot-label">PRN</div>
           <div class="med-slot-btns">
-            <button class="med-btn" id="med-prn-w" onclick="toggleMed('prn','W')">W</button>
-            <button class="med-btn" id="med-prn-c" onclick="toggleMed('prn','C')">C</button>
-            <button class="med-btn" id="med-prn-m" onclick="toggleMed('prn','M')">M</button>
+            <button class="med-btn" id="med-prn-yes" onclick="toggleMed('prn','Yes')">Yes</button>
+            <button class="med-btn" id="med-prn-no" onclick="toggleMed('prn','No')">No</button>
           </div>
-          <div class="next-day-wrap" id="nd-prn"><input type="checkbox" id="nd-prn-chk" onchange="toggleNextDay('prn')"><label class="next-day-label" for="nd-prn-chk">Next day</label></div>
         </div>
       </div>
     </div>
@@ -1721,12 +1719,7 @@ function editTodayVisit(recId){
   
   // Update button states
   ['morning','lunch','dinner','bedtime','prn'].forEach(slot=>{
-    const wBtn=document.getElementById('med-'+slot+'-w');
-    const cBtn=document.getElementById('med-'+slot+'-c');
-    const mBtn=document.getElementById('med-'+slot+'-m');
-    if(wBtn) wBtn.className='med-btn'+(ms[slot]==='W'?' active-w':'');
-    if(cBtn) cBtn.className='med-btn'+(ms[slot]==='C'?' active-c':'');
-    if(mBtn) mBtn.className='med-btn'+(ms[slot]==='M'?' active-m':'');
+    setMedBtnStates(slot, ms[slot]);
     const ndWrap=document.getElementById('nd-'+slot);
     if(ndWrap) ndWrap.className='next-day-wrap'+(ms[slot]==='C'&&nd[slot]?' show':'');
     const ndChk=document.getElementById('nd-'+slot+'-chk');
@@ -1818,12 +1811,7 @@ function resetMedScheduleOnly(){
   medSchedule = {};
   medNextDay = {};
   MED_SLOTS.forEach(slot=>{
-    const wBtn=document.getElementById('med-'+slot+'-w');
-    const cBtn=document.getElementById('med-'+slot+'-c');
-    const mBtn=document.getElementById('med-'+slot+'-m');
-    if(wBtn) wBtn.className='med-btn';
-    if(cBtn) cBtn.className='med-btn';
-    if(mBtn) mBtn.className='med-btn';
+    setMedBtnStates(slot, null);
     const ndWrap=document.getElementById('nd-'+slot);
     if(ndWrap) ndWrap.className='next-day-wrap';
     const ndChk=document.getElementById('nd-'+slot+'-chk');
@@ -2057,6 +2045,21 @@ let medSchedule = {}; // {morning: 'W'|'C'|'M'|null, ...}
 let medNextDay = {};  // {morning: true|false, ...} for C slots
 const MED_SLOTS = ['morning','lunch','dinner','bedtime','prn'];
 
+function setMedBtnStates(slot, val){
+  if(slot==='prn'){
+    const y=document.getElementById('med-prn-yes');
+    const n=document.getElementById('med-prn-no');
+    if(y) y.className='med-btn'+(val==='Yes'?' active-w':'');
+    if(n) n.className='med-btn'+(val==='No'?' active-c':'');
+    return;
+  }
+  const wBtn=document.getElementById('med-'+slot+'-w');
+  const cBtn=document.getElementById('med-'+slot+'-c');
+  const mBtn=document.getElementById('med-'+slot+'-m');
+  if(wBtn) wBtn.className='med-btn'+(val==='W'?' active-w':'');
+  if(cBtn) cBtn.className='med-btn'+(val==='C'?' active-c':'');
+  if(mBtn) mBtn.className='med-btn'+(val==='M'?' active-m':'');
+}
 function toggleMed(slot, val){
   // Toggle — if already selected deselect it
   medSchedule[slot] = medSchedule[slot]===val ? null : val;
@@ -2066,13 +2069,8 @@ function toggleMed(slot, val){
     const chk = document.getElementById('nd-'+slot+'-chk');
     if(chk) chk.checked = false;
   }
-  // Update all three button styles for this slot
-  const wBtn = document.getElementById('med-'+slot+'-w');
-  const cBtn = document.getElementById('med-'+slot+'-c');
-  const mBtn = document.getElementById('med-'+slot+'-m');
-  if(wBtn) wBtn.className = 'med-btn' + (medSchedule[slot]==='W'?' active-w':'');
-  if(cBtn) cBtn.className = 'med-btn' + (medSchedule[slot]==='C'?' active-c':'');
-  if(mBtn) mBtn.className = 'med-btn' + (medSchedule[slot]==='M'?' active-m':'');
+  // Update button styles for this slot (PRN uses Yes/No)
+  setMedBtnStates(slot, medSchedule[slot]);
   // Show/hide next day checkbox — only when C is selected
   const ndWrap = document.getElementById('nd-'+slot);
   if(ndWrap) ndWrap.className = 'next-day-wrap' + (medSchedule[slot]==='C'?' show':'');
@@ -2162,12 +2160,7 @@ function resetMedSchedule(){
   medSchedule = {};
   medNextDay = {};
   MED_SLOTS.forEach(slot=>{
-    const wBtn=document.getElementById('med-'+slot+'-w');
-    const cBtn=document.getElementById('med-'+slot+'-c');
-    const mBtn=document.getElementById('med-'+slot+'-m');
-    if(wBtn) wBtn.className='med-btn';
-    if(cBtn) cBtn.className='med-btn';
-    if(mBtn) mBtn.className='med-btn';
+    setMedBtnStates(slot, null);
     const ndWrap=document.getElementById('nd-'+slot);
     if(ndWrap) ndWrap.className='next-day-wrap';
     const ndChk=document.getElementById('nd-'+slot+'-chk');
@@ -2752,6 +2745,11 @@ function buildPageHTML(patientName, mht, label, labelColor, visits, monthLabel, 
           </tr>`;
         }
         const getCell=s=>{
+          if(s==='prn'){
+            if(ms.prn==='Yes') return '<td style="text-align:center;font-weight:700;color:#3B6D11;">✓</td>';
+            if(ms.prn && ms.prn!=='No') return '<td style="text-align:center;font-weight:700;">'+ms.prn+'</td>';
+            return '<td style="text-align:center;color:#bbb;">—</td>';
+          }
           if(!ms[s]) return '<td style="text-align:center;color:#bbb;">—</td>';
           if(ms[s]==='W'){
             const wsig = ctrlSigKey ? (v.controlledSignatures && v.controlledSignatures[ctrlSigKey]) : v.sig;
@@ -3085,8 +3083,8 @@ function openModal(id){
       ${['morning','lunch','dinner','bedtime','prn'].map(s=>{
         if(!r.medSchedule[s]) return '';
         const v=r.medSchedule[s];
-        const bg=v==='W'?'#EAF3DE':v==='C'?'#E6F1FB':'#FCEBEB';
-        const col=v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
+        const bg=v==='Yes'?'#EAF3DE':v==='No'?'#f0f0ec':v==='W'?'#EAF3DE':v==='C'?'#E6F1FB':'#FCEBEB';
+        const col=v==='Yes'?'#3B6D11':v==='No'?'#888':v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
         const nd=(r.medNextDay||{})[s]?' *':'';
         return `<span style="display:inline-block;margin-left:4px;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:700;background:${bg};color:${col};">${s.charAt(0).toUpperCase()+s.slice(1)}: ${v}${nd}</span>`;
       }).join('')}
@@ -3128,8 +3126,8 @@ function openPatientModal(enc){
       slots.forEach(function(s){
         if(!ms[s]) return;
         const v=ms[s];
-        const bg=v==='W'?'#EAF3DE':v==='C'?'#E6F1FB':'#FCEBEB';
-        const col=v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
+        const bg=v==='Yes'?'#EAF3DE':v==='No'?'#f0f0ec':v==='W'?'#EAF3DE':v==='C'?'#E6F1FB':'#FCEBEB';
+        const col=v==='Yes'?'#3B6D11':v==='No'?'#888':v==='W'?'#3B6D11':v==='C'?'#185FA5':'#A32D2D';
         slotHtml+='<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:'+bg+';color:'+col+';">'+s.charAt(0).toUpperCase()+s.slice(1)+':'+v+(nd[s]?'*':'')+'</span> ';
       });
       html+='<div style="background:#fafaf8;border:1px solid #e8e8e4;border-radius:10px;padding:10px;margin-bottom:8px;">';
