@@ -1702,10 +1702,12 @@ function editTodayVisit(recId){
   if(!rec) return;
   if(!confirm('Edit this visit record? The current record will be deleted and you can re-record it.')) return;
   
-  // Delete old record
-  records = records.filter(r=>r.id!==recId);
+  // Delete old record (and any linked next-day carry entry)
+  const _childId = rec.carryChildId;
+  records = records.filter(r=>r.id!==recId && (!_childId || r.id!==_childId));
   saveRec();
   deleteRecFirebase(recId, rec.patient);
+  if(_childId) deleteRecFirebase(_childId, rec.patient);
 
   // Remove banner
   const banner = document.getElementById('today-visit-banner');
@@ -2410,9 +2412,41 @@ function saveRecord(){
     managerFlagged: managerFlagged,
     enteredBy: currentRole==='manager' ? 'Manager ('+currentUser+')' : null
   };
+  // If any slot was marked "carry next day", auto-create a linked C entry for the next day.
+  let carryRec = null;
+  const _carried = Object.keys(newRec.medNextDay||{}).filter(k=>newRec.medNextDay[k] && newRec.medSchedule[k]);
+  if(_carried.length){
+    const _cd = new Date(newRec.timestamp); _cd.setDate(_cd.getDate()+1);
+    const _cs = {}; _carried.forEach(k=>{ _cs[k]='C'; });
+    carryRec = {
+      id: newRec.id+'c',
+      timestamp: _cd.toISOString(),
+      employee: newRec.employee,
+      patient: newRec.patient,
+      mht: newRec.mht,
+      visitType: 'Carry (next day)',
+      blisterPack: false,
+      unableToSign: null,
+      notes: 'Carried dose from '+new Date(newRec.timestamp).toLocaleDateString('en-CA',{month:'short',day:'numeric'}),
+      signature: null,
+      controlledSignatures: {},
+      controlled: false,
+      usedSaved: false,
+      medSchedule: _cs,
+      medNextDay: {},
+      autoCarry: true,
+      carryParentId: newRec.id,
+      managerEntry: newRec.managerEntry,
+      managerFlagged: false,
+      enteredBy: newRec.enteredBy
+    };
+    newRec.carryChildId = carryRec.id;
+  }
   records.unshift(newRec);
+  if(carryRec) records.unshift(carryRec);
   saveRec();
   addPendingVisit(newRec);                 // hold until the server confirms
+  if(carryRec) addPendingVisit(carryRec);
   // Clear the form right away so staff can move on
   clearSig(); selectedPat=null; usingSavedSig=false; resetMedSchedule();
   document.getElementById('pat-name').value=''; document.getElementById('notes').value='';
@@ -2432,6 +2466,7 @@ function saveRecord(){
       msg.className='msg ok'; msg.textContent='\u2713 Saved \u2014 will sync when back online';
     }
   });
+  if(carryRec) saveRecFirebase(carryRec);
   // If the server is slow to answer, reassure that it's saved and still syncing.
   setTimeout(()=>{ if(!_acked && msg.textContent==='\u2713 Saved'){ msg.textContent='\u2713 Saved \u2014 syncing\u2026'; } }, 2500);
 }
@@ -3169,7 +3204,11 @@ function viewSig(id){
 function deleteRecord(id){
   if(!confirm('Delete this record? Cannot be undone.')) return;
   const recToDelete = records.find(r=>r.id===id);
-  records=records.filter(r=>r.id!==id); saveRec(); deleteRecFirebase(id, recToDelete?.patient);
+  const _childId = recToDelete?.carryChildId;   // linked next-day carry entry
+  records=records.filter(r=>r.id!==id && (!_childId || r.id!==_childId));
+  saveRec();
+  deleteRecFirebase(id, recToDelete?.patient);
+  if(_childId) deleteRecFirebase(_childId, recToDelete?.patient);
   document.getElementById('modal').style.display='none';
   renderCompliance();
 }
