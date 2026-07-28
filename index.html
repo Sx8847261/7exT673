@@ -2208,13 +2208,14 @@ function renderSigContainer(){
   // Regular meds signature
   html+=`<div class="sig-section">
     <div class="sig-section-title">Regular Medications Signature</div>
-    ${hasSaved?`<button class="btn success" style="margin-bottom:8px;" id="use-saved-btn" onclick="useSavedSig()">✓ Use ${selectedPat.name}'s saved signature</button>`:''}
-    <div id="sig-regular-wrap" class="${hasSaved?'sig-wrap has-sig':'sig-wrap'}" style="${hasSaved?'display:none;':''}">
+    ${hasSaved?`<img id="sig-saved-preview" src="${patientSigs[selectedPat.name]}" style="width:100%;height:70px;object-fit:contain;background:#f8fff8;border-radius:10px;margin-bottom:6px;border:1px solid #cde8cd;">
+    <button class="btn success" style="margin-bottom:6px;" id="use-saved-btn" onclick="useSavedSig()">✓ Use ${selectedPat.name}'s saved signature</button>
+    <button class="btn ghost" style="margin-bottom:6px;border-color:#A22C89;color:#A22C89;" id="sign-new-btn" onclick="signNewSig()">✍️ Sign new signature instead</button>`:''}
+    <div id="sig-regular-wrap" class="sig-wrap" style="${hasSaved?'display:none;':''}">
       <canvas id="sig-canvas-regular"></canvas>
       <p class="sig-hint">Patient signs here with finger</p>
     </div>
-    ${hasSaved?`<img id="sig-saved-preview" src="${patientSigs[selectedPat.name]}" style="width:100%;height:70px;object-fit:contain;background:#f8fff8;border-radius:10px;margin-top:6px;">`:''}
-    <button class="btn ghost" onclick="clearOneSig('regular')" style="${hasSaved?'display:none;':''}">↺ Clear</button>
+    <button class="btn ghost" id="clear-regular-btn" onclick="clearOneSig('regular')" style="${hasSaved?'display:none;':''}">↺ Clear</button>
   </div>`;
 
   // Controlled med signatures
@@ -2260,14 +2261,27 @@ function renderSigContainer(){
 
 function useSavedSig(){
   usingSavedSig=true; hasSig=true;
-  document.getElementById('use-saved-btn').style.display='none';
-  document.getElementById('sig-regular-wrap').style.display='none';
+  const ub=document.getElementById('use-saved-btn'); if(ub) ub.style.display='none';
+  const sn=document.getElementById('sign-new-btn'); if(sn) sn.style.display='none';
+  const wrap=document.getElementById('sig-regular-wrap'); if(wrap) wrap.style.display='none';
+  const clr=document.getElementById('clear-regular-btn'); if(clr) clr.style.display='none';
   const preview=document.getElementById('sig-saved-preview');
   if(preview) preview.style.display='block';
   // One tap fills every controlled-medication pad with the same saved signature too.
   if(selectedPat && selectedPat.controlled && selectedPat.controlledCount>0){
     for(let i=0;i<selectedPat.controlledCount;i++){ useSavedControlledSig(i); }
   }
+}
+// Override a saved (or blank/bad) signature by drawing a fresh one.
+function signNewSig(){
+  usingSavedSig=false; hasSig=false;
+  delete signatures['regular'];
+  const preview=document.getElementById('sig-saved-preview'); if(preview) preview.style.display='none';
+  const ub=document.getElementById('use-saved-btn'); if(ub) ub.style.display='none';
+  const sn=document.getElementById('sign-new-btn'); if(sn) sn.style.display='none';
+  const wrap=document.getElementById('sig-regular-wrap'); if(wrap) wrap.style.display='block';
+  const clr=document.getElementById('clear-regular-btn'); if(clr) clr.style.display='block';
+  initOneCanvas('regular','sig-canvas-regular');   // (re)initialise + size now that it is visible
 }
 
 function switchToFresh(){
@@ -2299,11 +2313,11 @@ function initOneCanvas(key, canvasId){
   resize();
   let drawing=false, lx=0, ly=0;
   const getPos=e=>{const r=canvas.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return[s.clientX-r.left,s.clientY-r.top];};
-  canvas.addEventListener('mousedown',e=>{drawing=true;if(key==='regular')hasSig=true;[lx,ly]=getPos(e);});
-  canvas.addEventListener('mousemove',e=>{if(!drawing)return;const[x,y]=getPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];signatures[key]=canvas.toDataURL();});
+  canvas.addEventListener('mousedown',e=>{drawing=true;[lx,ly]=getPos(e);});
+  canvas.addEventListener('mousemove',e=>{if(!drawing)return;if(key==='regular')hasSig=true;const[x,y]=getPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];signatures[key]=canvas.toDataURL();});
   canvas.addEventListener('mouseup',()=>drawing=false);
-  canvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;if(key==='regular')hasSig=true;[lx,ly]=getPos(e);},{passive:false});
-  canvas.addEventListener('touchmove',e=>{if(!drawing)return;e.preventDefault();const[x,y]=getPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];signatures[key]=canvas.toDataURL();},{passive:false});
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;[lx,ly]=getPos(e);},{passive:false});
+  canvas.addEventListener('touchmove',e=>{if(!drawing)return;e.preventDefault();if(key==='regular')hasSig=true;const[x,y]=getPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];signatures[key]=canvas.toDataURL();},{passive:false});
   canvas.addEventListener('touchend',()=>drawing=false);
 }
 
