@@ -1293,6 +1293,14 @@ function saveStaff(){
   syncDoc('staff_list', {staff}, 'Staff list');
 }
 function savePSigs(){
+  // Safety: refuse to push a suspiciously empty signature store to the server.
+  // This prevents an empty in-memory copy (e.g. a failed load) from wiping everyone's
+  // signatures. A genuine "clear all" would go through a different, explicit path.
+  const count = Object.keys(patientSigs||{}).length;
+  if(count === 0){
+    console.warn('[savePSigs] refused to write an empty signature store - possible wipe blocked');
+    return;
+  }
   // Signatures are stored in Firestore only; caching them locally overflows the browser.
   syncDoc('patient_sigs', {sigs: JSON.stringify(patientSigs)}, 'Patient signatures');
 }
@@ -2262,9 +2270,11 @@ function renderSigContainer(){
 function useSavedSig(){
   usingSavedSig=true; hasSig=true;
   const ub=document.getElementById('use-saved-btn'); if(ub) ub.style.display='none';
-  const sn=document.getElementById('sign-new-btn'); if(sn) sn.style.display='none';
   const wrap=document.getElementById('sig-regular-wrap'); if(wrap) wrap.style.display='none';
   const clr=document.getElementById('clear-regular-btn'); if(clr) clr.style.display='none';
+  // Keep the "Sign new signature instead" button visible — if the saved one turns
+  // out to be blank, staff must always be able to draw a fresh one.
+  const sn=document.getElementById('sign-new-btn'); if(sn) sn.style.display='block';
   const preview=document.getElementById('sig-saved-preview');
   if(preview) preview.style.display='block';
   // One tap fills every controlled-medication pad with the same saved signature too.
