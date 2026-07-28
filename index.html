@@ -1311,6 +1311,17 @@ function saveStaff(){
 function _patSigId(name){ return (name||'').replace(/[^a-zA-Z0-9]/g,'_'); }
 // Save ONE patient's signature to its own document (collection: patient_signatures).
 // Per-patient docs have no 1 MiB blob limit, so the signature store never fills up.
+async function _removeFromBlob(name){
+  if(!window._fbReady || !remoteLoadOK) return;
+  try {
+    const ref = window._doc(window._db,'app_settings','patient_sigs');
+    const snap = await window._getDoc(ref);
+    if(snap.exists() && snap.data().sigs){
+      const blob = JSON.parse(snap.data().sigs);
+      if(name in blob){ delete blob[name]; await window._setDoc(ref, {sigs: JSON.stringify(blob)}); }
+    }
+  } catch(e){ console.error('[removeFromBlob]', e); }
+}
 function savePatientSig(name){
   const sig = patientSigs[name];
   if(!window._fbReady || !remoteLoadOK){
@@ -2577,7 +2588,7 @@ function saveEditPatient(){
   const idx=patients.findIndex(p=>p.name===original); if(idx===-1) return;
   if(newName!==original){
     records=records.map(r=>r.patient===original?{...r,patient:newName,mht:newMht}:r);
-    if(patientSigs[original]){ patientSigs[newName]=patientSigs[original]; delete patientSigs[original]; savePatientSig(newName); savePatientSig(original); }
+    if(patientSigs[original]){ patientSigs[newName]=patientSigs[original]; delete patientSigs[original]; savePatientSig(newName); savePatientSig(original); _removeFromBlob(original); }
     saveRec();
   } else {
     records=records.map(r=>r.patient===original?{...r,mht:newMht}:r); saveRec();
@@ -3073,7 +3084,7 @@ function removeStaff(name){
 }
 function clearPatientSig(name){
   if(!confirm(`Clear saved signature for "${name}"?`)) return;
-  delete patientSigs[name]; savePatientSig(name); renderSettings();
+  delete patientSigs[name]; savePatientSig(name); _removeFromBlob(name); renderSettings();
 }
 function renderEmpLoginList(){
   const el=document.getElementById('emp-login-list');
