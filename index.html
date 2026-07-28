@@ -3162,7 +3162,7 @@ function renderSettings(){
   if(countEl) countEl.textContent=staff.length+' employees';
   renderStaffPinList();
   const ssl=document.getElementById('saved-sigs-list');
-  const sigPats=Object.keys(patientSigs);
+  const sigPats=Object.keys(patientSigs).sort((a,b)=>lastName(a).localeCompare(lastName(b)));
   ssl.innerHTML=sigPats.length
     ? sigPats.map(p=>`<div class="patient-row" style="margin-bottom:8px;">
         <div class="patient-row-top">
