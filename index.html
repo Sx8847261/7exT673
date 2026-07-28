@@ -9,7 +9,7 @@
 <title>RxSign</title>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, setDoc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
@@ -32,6 +32,7 @@
   window._addDoc = addDoc;
   window._setDoc = setDoc;
   window._getDoc = getDoc;
+  window._getDocs = getDocs;
   window._deleteDoc = deleteDoc;
   window._doc = doc;
   window._onSnapshot = onSnapshot;
@@ -1020,8 +1021,23 @@ async function load() {
       }
       const sigSnap = await window._getDoc(window._doc(window._db,'app_settings','patient_sigs'));
       if(sigSnap.exists() && sigSnap.data().sigs){
-        patientSigs = JSON.parse(sigSnap.data().sigs);
+        patientSigs = JSON.parse(sigSnap.data().sigs);   // legacy blob (kept as fallback)
       }
+      // New structure: one document per patient. Read them and let them take precedence.
+      const _perPatientSig = {};
+      try {
+        const _sigDocs = await window._getDocs(window._col('patient_signatures'));
+        _sigDocs.forEach(d=>{ const dd=d.data(); if(dd && dd.name && dd.sig){ _perPatientSig[dd.name]=true; patientSigs[dd.name]=dd.sig; } });
+      } catch(e){ console.error('[load] per-patient signatures read failed (rule missing?):', e); }
+      // One-time migration: copy any legacy-blob signature that lacks its own document.
+      try {
+        for(const _nm of Object.keys(patientSigs)){
+          if(patientSigs[_nm] && !_perPatientSig[_nm]){
+            window._setDoc(window._doc(window._db,'patient_signatures',_patSigId(_nm)), {name:_nm, sig:patientSigs[_nm]})
+              .catch(e=>console.warn('[sig-migrate] '+_nm+':', e));
+          }
+        }
+      } catch(e){ console.error('[sig-migrate]', e); }
       const offSnap = await window._getDoc(window._doc(window._db,'app_settings','office_pin'));
       if(offSnap.exists() && offSnap.data().pin){
         safeSetItem(OFFICE_PIN_KEY, offSnap.data().pin);
@@ -1291,6 +1307,24 @@ function savePat(){
 function saveStaff(){
   safeSetItem(STAFF_KEY, JSON.stringify(staff));
   syncDoc('staff_list', {staff}, 'Staff list');
+}
+function _patSigId(name){ return (name||'').replace(/[^a-zA-Z0-9]/g,'_'); }
+// Save ONE patient's signature to its own document (collection: patient_signatures).
+// Per-patient docs have no 1 MiB blob limit, so the signature store never fills up.
+function savePatientSig(name){
+  const sig = patientSigs[name];
+  if(!window._fbReady || !remoteLoadOK){
+    updateSyncBadge(window._fbReady ? 'error' : 'local');
+    alert('\u26a0\ufe0f Could not reach the server, so ' + name + '\u2019s signature was NOT saved.\nRefresh and try again.');
+    return;
+  }
+  const ref = window._doc(window._db,'patient_signatures',_patSigId(name));
+  updateSyncBadge('syncing');
+  const op = sig ? window._setDoc(ref,{name:name,sig:sig}) : window._deleteDoc(ref);
+  Promise.resolve(op)
+    .then(()=>updateSyncBadge('synced'))
+    .catch(e=>{ updateSyncBadge('error'); console.error('[savePatientSig]',e);
+      alert('\u26a0\ufe0f ' + name + '\u2019s signature did NOT save.\n\n'+(e&&e.message?e.message:e)); });
 }
 function savePSigs(){
   // Safety: refuse to push a suspiciously empty signature store to the server.
@@ -2412,7 +2446,7 @@ function saveRecord(){
   const anyWitnessedVisit = Object.values(medSchedule).some(v=>v==='W');
   const sigData = anyWitnessedVisit ? getSigData() : null;
   const allSigs = anyWitnessedVisit ? getAllSigData() : {};
-  if(anyWitnessedVisit && !usingSavedSig && sigData && selectedPat){ patientSigs[selectedPat.name]=sigData; savePSigs(); }
+  if(anyWitnessedVisit && !usingSavedSig && sigData && selectedPat){ patientSigs[selectedPat.name]=sigData; savePatientSig(selectedPat.name); }
   const recordEmployee = getRecordEmployee();
   const recordTimestamp = getRecordTimestamp();
   const managerFlagged = isManagerFlagged();
@@ -2543,7 +2577,7 @@ function saveEditPatient(){
   const idx=patients.findIndex(p=>p.name===original); if(idx===-1) return;
   if(newName!==original){
     records=records.map(r=>r.patient===original?{...r,patient:newName,mht:newMht}:r);
-    if(patientSigs[original]){ patientSigs[newName]=patientSigs[original]; delete patientSigs[original]; savePSigs(); }
+    if(patientSigs[original]){ patientSigs[newName]=patientSigs[original]; delete patientSigs[original]; savePatientSig(newName); savePatientSig(original); }
     saveRec();
   } else {
     records=records.map(r=>r.patient===original?{...r,mht:newMht}:r); saveRec();
@@ -3039,7 +3073,7 @@ function removeStaff(name){
 }
 function clearPatientSig(name){
   if(!confirm(`Clear saved signature for "${name}"?`)) return;
-  delete patientSigs[name]; savePSigs(); renderSettings();
+  delete patientSigs[name]; savePatientSig(name); renderSettings();
 }
 function renderEmpLoginList(){
   const el=document.getElementById('emp-login-list');
