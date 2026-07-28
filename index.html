@@ -350,6 +350,11 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
     </div>
     <!-- Blister Pack toggle -->
     </div><!-- /emp-select-wrap -->
+    <div id="office-entry-box" style="display:none;margin-bottom:14px;">
+      <label>Administered by (staff name or initials)</label>
+      <input type="text" id="office-admin-name" placeholder="e.g. JM or Jeffrey Moon" autocomplete="off">
+      <p style="font-size:11px;color:#888;margin-top:4px;">Pharmacy pickup — administered in the pharmacy.</p>
+    </div>
     <div id="blister-pack-wrap" style="display:block;margin-bottom:14px;">
       <button id="blister-pack-btn" onclick="toggleBlisterPack()" style="width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #e8e8e4;background:#fafaf8;color:#444;font-family:inherit;transition:all 0.15s;">
         📦 Blister Pack
@@ -819,7 +824,7 @@ function applyRoleAccess(){
   // Show/hide nav tabs based on role using data-tab attribute
   document.querySelectorAll('.nav-btn').forEach(b=>{
     const tab = b.getAttribute('data-tab');
-    if(tab==='collect'){ b.style.display=isOffice?'none':'block'; return; }
+    if(tab==='collect'){ b.style.display='block'; return; }
     if(tab==='staffcompliance'){ b.style.display='block'; return; }
     if(tab==='working'){ b.style.display=isManager?'none':'block'; return; }
     if(tab==='roster'){ b.style.display=isManager?'block':'none'; return; }
@@ -845,7 +850,7 @@ function applyRoleAccess(){
     showTab('compliance'); 
   }
   // If office go to staff compliance view
-  else if(isOffice){ showTab('staffcompliance'); }
+  else if(isOffice){ showTab('collect'); }
   // If employee, go straight to collect and check shift state
   else { 
     showTab('collect');
@@ -2004,15 +2009,22 @@ function togglePatHistory(){
 
 /* ── Manager back-entry ── */
 function showManagerEntryBox(){
+  const isOffice = currentRole==='office';
   const box = document.getElementById('manager-entry-box');
   if(box){
     box.style.display = currentRole==='manager' ? 'block' : 'none';
   }
-  // Hide the emp selection section for manager - they use the dropdown above
+  // Hide the emp selection for manager (dropdown above) and for office (types name instead)
   const empWrap = document.getElementById('emp-select-wrap');
   if(empWrap){
-    empWrap.style.display = currentRole==='manager' ? 'none' : 'block';
+    empWrap.style.display = (currentRole==='manager'||isOffice) ? 'none' : 'block';
   }
+  // Office pickup: show the "administered by" input; hide route selection (visit is "Pharmacy")
+  const officeBox = document.getElementById('office-entry-box');
+  if(officeBox){ officeBox.style.display = isOffice ? 'block' : 'none'; }
+  const routeWrap = document.getElementById('route-select-wrap');
+  if(routeWrap){ routeWrap.style.display = isOffice ? 'none' : 'block'; }
+  if(isOffice){ selectedRoute = 'Pharmacy'; }
   // Set default date to today and time to now
   const now = new Date();
   const dateEl = document.getElementById('manager-date');
@@ -2051,6 +2063,9 @@ function getRecordEmployee(){
   if(currentRole==='manager'){
     const sel = document.getElementById('manager-emp-select');
     return sel?.value || currentUser;
+  }
+  if(currentRole==='office'){
+    return (document.getElementById('office-admin-name')?.value || '').trim() || 'Pharmacy';
   }
   return selectedEmp;
 }
@@ -2432,12 +2447,14 @@ function clearOneControlledSig(i){
 /* ── Save record ── */
 function saveRecord(){
   const patName=document.getElementById('pat-name').value.trim();
-  const visit=selectedRoute||'Not specified';
+  const visit=currentRole==='office' ? 'Pharmacy' : (selectedRoute||'Not specified');
   const notes=document.getElementById('notes').value.trim();
   const msg=document.getElementById('collect-msg');
   msg.className='msg'; msg.textContent='';
-  if(currentRole!=='manager' && !selectedEmp){ msg.className='msg err'; msg.textContent='Please select an employee.'; return; }
-  if(!selectedRoute){ msg.className='msg err'; msg.textContent='Please select a route first.'; return; }
+  if(currentRole==='office'){
+    if(!(document.getElementById('office-admin-name')?.value||'').trim()){ msg.className='msg err'; msg.textContent='Please enter who administered (name or initials).'; return; }
+  } else if(currentRole!=='manager' && !selectedEmp){ msg.className='msg err'; msg.textContent='Please select an employee.'; return; }
+  if(currentRole!=='office' && !selectedRoute){ msg.className='msg err'; msg.textContent='Please select a route first.'; return; }
   // Blister pack visits skip med schedule and signature
   if(isBlisterPack){ hasSig = true; }
   if(!patName||!selectedPat){ msg.className='msg err'; msg.textContent='Please select a patient from the list.'; return; }
