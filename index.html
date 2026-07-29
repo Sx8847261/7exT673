@@ -2604,11 +2604,18 @@ function saveEditPatient(){
   if(!newName){ msg.className='msg err'; msg.textContent='Name cannot be empty.'; return; }
   const idx=patients.findIndex(p=>p.name===original); if(idx===-1) return;
   if(newName!==original){
+    const _affected = records.filter(r=>r.patient===original).map(r=>r.id);
     records=records.map(r=>r.patient===original?{...r,patient:newName,mht:newMht}:r);
     if(patientSigs[original]){ patientSigs[newName]=patientSigs[original]; delete patientSigs[original]; savePatientSig(newName); savePatientSig(original); _removeFromBlob(original); }
     saveRec();
+    // Propagate the rename to the Firebase visit records: move each from the old
+    // patient location to the new one (otherwise the PDF reverts to old data on reload).
+    _affected.forEach(id=>{ const rec=records.find(r=>r.id===id); if(rec){ deleteRecFirebase(id, original); saveRecFirebase(rec); } });
   } else {
+    const _affected = records.filter(r=>r.patient===original).map(r=>r.id);
     records=records.map(r=>r.patient===original?{...r,mht:newMht}:r); saveRec();
+    // Propagate the team (mht) change to the Firebase visit records.
+    _affected.forEach(id=>{ const rec=records.find(r=>r.id===id); if(rec){ saveRecFirebase(rec); } });
   }
   const newControlled=document.getElementById('edit-pat-controlled').checked && 
     parseInt(document.getElementById('edit-pat-controlled-count').value)>0;
