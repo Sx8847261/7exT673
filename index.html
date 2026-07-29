@@ -2727,23 +2727,24 @@ function renderRecords(){
 function renderCompliance(){
   const q=(document.getElementById('comp-search')?.value||'').toLowerCase();
   const sg=document.getElementById('stat-grid');
-  const today=records.filter(r=>isToday(r.timestamp));
-  const week=records.filter(r=>isThisWeek(r.timestamp));
-  const allPats=[...new Set(records.map(r=>r.patient))];
+  const rc=records.filter(r=>!r.autoCarry);   // next-day carry entries aren't counted in report stats
+  const today=rc.filter(r=>isToday(r.timestamp));
+  const week=rc.filter(r=>isThisWeek(r.timestamp));
+  const allPats=[...new Set(rc.map(r=>r.patient))];
   sg.innerHTML=`
     <div class="stat"><div class="stat-val">${today.length}</div><div class="stat-lbl">Signatures today</div></div>
     <div class="stat"><div class="stat-val">${[...new Set(today.map(r=>r.patient))].length}</div><div class="stat-lbl">Patients today</div></div>
     <div class="stat"><div class="stat-val">${week.length}</div><div class="stat-lbl">This week</div></div>
     <div class="stat"><div class="stat-val">${allPats.length}</div><div class="stat-lbl">Total patients</div></div>`;
   const cl=document.getElementById('comp-list');
-  const patObjs=allPats.map(n=>{const pat=patients.find(p=>p.name===n); return {name:n,mht:pat?.mht||records.find(r=>r.patient===n)?.mht||''};});
+  const patObjs=allPats.map(n=>{const pat=patients.find(p=>p.name===n); return {name:n,mht:pat?.mht||rc.find(r=>r.patient===n)?.mht||''};});
   const sorted=sortPatients(patObjs).filter(p=>!q||p.name.toLowerCase().includes(q)||(p.mht||'').toLowerCase().includes(q));
   if(!sorted.length){ cl.innerHTML='<div class="empty">No patients found</div>'; return; }
   let html='',curL='';
   sorted.forEach(p=>{
     const letter=lastName(p.name)[0]?.toUpperCase()||'?';
     if(letter!==curL){ curL=letter; html+=`<div class="alpha-header">${letter}</div>`; }
-    const pRecs=records.filter(r=>r.patient===p.name);
+    const pRecs=records.filter(r=>r.patient===p.name && !r.autoCarry);
     const todayRecs=pRecs.filter(r=>isToday(r.timestamp));
     const empsSeen=[...new Set(todayRecs.map(r=>r.employee))].map(e=>{
       const parts=e.trim().split(' ');
@@ -2787,7 +2788,7 @@ function populateMonthDropdown(){
 
 function getMonthRecords(){
   const month=document.getElementById('export-month')?.value||new Date().toISOString().slice(0,7);
-  return records.filter(r=>r.timestamp.startsWith(month));
+  return records.filter(r=>r.timestamp.startsWith(month) && !r.autoCarry);
 }
 
 function groupByPatient(recs){
