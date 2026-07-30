@@ -1236,7 +1236,7 @@ function initFirebase(){
       
       const results = await Promise.all(promises);
       allRecords = results.flat().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-      records = allRecords;
+      records = allRecords.filter(r=>!r.autoCarry);  // separate next-day carry entries are not shown; the carry appears as C* on the visit day
       // Preserve any not-yet-synced local visits so a server refresh can't drop them
       getPendingVisits().forEach(pr => { if(!records.find(r=>r.id===pr.id)) records.unshift(pr); });
       records.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
@@ -2502,7 +2502,7 @@ function saveRecord(){
   };
   // If any slot was marked "carry next day", auto-create a linked C entry for the next day.
   let carryRec = null;
-  const _carried = Object.keys(newRec.medNextDay||{}).filter(k=>newRec.medNextDay[k] && newRec.medSchedule[k]);
+  const _carried = [];  // manager opted out of separate next-day carry entries; the carry is recorded as C* on the visit day
   if(_carried.length){
     const _cd = new Date(newRec.timestamp); _cd.setDate(_cd.getDate()+1);
     const _cs = {}; _carried.forEach(k=>{ _cs[k]='C'; });
