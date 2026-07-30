@@ -712,10 +712,12 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
 <div id="rec-edit-modal" class="modal-backdrop" style="display:none;" onclick="closeRecEdit(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3>Edit visit — medication schedule</h3>
+    <h3>Edit visit</h3>
     <p id="rec-edit-sub" style="font-size:12px;color:#888;margin:4px 0 12px;"></p>
+    <label style="margin-top:0;">Route / visit type</label>
+    <select id="rec-edit-route" style="margin-bottom:14px;"></select>
     <div id="rec-edit-slots"></div>
-    <p style="font-size:11px;color:#888;margin-top:10px;">Tap W / C / M to set a slot; tap the active one again to clear it. Saved as a manager correction — no signature is collected.</p>
+    <p style="font-size:11px;color:#888;margin-top:10px;">Change the route above and/or tap W / C / M to set a slot (tap the active one again to clear). Saved as a manager correction — no signature is collected.</p>
     <button class="btn primary" onclick="saveVisitRecordEdit()">Save changes</button>
     <button class="btn ghost" onclick="closeRecEdit()">Cancel</button>
     <div id="rec-edit-msg" class="msg"></div>
@@ -3318,6 +3320,11 @@ function editVisitRecord(id){
   _recEditSchedule = {...(rec.medSchedule||{})};
   document.getElementById('rec-edit-sub').textContent = rec.patient + '  \u00b7  ' + formatDate(rec.timestamp) + '  \u00b7  ' + rec.visitType;
   const em=document.getElementById('rec-edit-msg'); if(em){ em.textContent=''; em.className='msg'; }
+  const _routes=['R1 - AM','R1 - PM','R2 - AM','R2 - PM','Emergency/Extra'];
+  const _cur=rec.visitType||'';
+  const _opts=_routes.indexOf(_cur)>=0 ? _routes.slice() : [_cur].concat(_routes);
+  const _rsel=document.getElementById('rec-edit-route');
+  if(_rsel) _rsel.innerHTML=_opts.map(function(r){return '<option value="'+r+'"'+(r===_cur?' selected':'')+'>'+r+'</option>';}).join('');
   renderRecEditSlots();
   document.getElementById('rec-edit-modal').style.display='flex';
 }
@@ -3351,6 +3358,8 @@ function saveVisitRecordEdit(){
   const rec = records.find(r=>r.id===_recEditId);
   if(!rec){ closeRecEdit(); return; }
   rec.medSchedule = {..._recEditSchedule};
+  const _newRoute = document.getElementById('rec-edit-route') ? document.getElementById('rec-edit-route').value : '';
+  if(_newRoute) rec.visitType = _newRoute;
   rec.editedBy = (currentRole==='manager') ? ('Manager ('+currentUser+')') : (currentUser||'Staff');
   rec.editedAt = new Date().toISOString();
   saveRec();
