@@ -1361,7 +1361,7 @@ const MAP_ROSTER_DEFAULT = {"R1AM":[{"name":"Jolie Allen","phn":"9141076423","se
 let mapRoster = null;
 let mapTimes = {};
 let mapCurrentRoute = 'R1AM';
-let mapCurrentDate = new Date().toISOString().slice(0,10);
+let mapCurrentDate = _mapLocalDate(new Date());
 let mapEditMode = false;
 const MAP_ROUTE_TO_VISIT = {'R1AM':'R1 - AM','R1PM':'R1 - PM','R2PM':'R2 - PM'};
 function _mapAttr(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -1369,10 +1369,11 @@ function _mapNorm(s){ return (s||'').toLowerCase().replace(/\([^)]*\)/g,'').repl
 function getMapRoster(){ if(!mapRoster) mapRoster = JSON.parse(JSON.stringify(MAP_ROSTER_DEFAULT)); return mapRoster; }
 function saveMapRoster(){ syncDoc('map_roster', {roster: getMapRoster()}, 'MAP roster'); }
 function saveMapTimes(){ syncDoc('map_times', {times: mapTimes}, 'MAP log times'); }
+function _mapLocalDate(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 function _map12h(d){ let hh=d.getHours(); const ap=hh>=12?'PM':'AM'; let h=hh%12; if(h===0) h=12; return h+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap; }
 function _mapAutoTime(name, route, date){
   const vt = MAP_ROUTE_TO_VISIT[route]; const nn=_mapNorm(name);
-  const cand = records.filter(r=> r.timestamp && r.timestamp.slice(0,10)===date && _mapNorm(r.patient)===nn && r.visitType===vt);
+  const cand = records.filter(r=> r.timestamp && _mapLocalDate(new Date(r.timestamp))===date && _mapNorm(r.patient)===nn && r.visitType===vt);
   if(!cand.length) return '';
   cand.sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
   return _map12h(new Date(cand[0].timestamp));
