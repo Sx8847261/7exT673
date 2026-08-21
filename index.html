@@ -1387,19 +1387,20 @@ let mapRoster = null;
 let mapTimes = {};
 let mapCurrentRoute = 'R1AM';
 let mapCurrentDate = new Date().toISOString().slice(0,10);
+let mapEditMode = false;
 const MAP_ROUTE_TO_VISIT = {'R1AM':'R1 - AM','R1PM':'R1 - PM','R2PM':'R2 - PM'};
 function _mapAttr(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function _mapNorm(s){ return (s||'').toLowerCase().replace(/\([^)]*\)/g,'').replace(/[^a-z0-9]/g,''); }
 function getMapRoster(){ if(!mapRoster) mapRoster = JSON.parse(JSON.stringify(MAP_ROSTER_DEFAULT)); return mapRoster; }
 function saveMapRoster(){ syncDoc('map_roster', {roster: getMapRoster()}, 'MAP roster'); }
 function saveMapTimes(){ syncDoc('map_times', {times: mapTimes}, 'MAP log times'); }
+function _map12h(d){ let hh=d.getHours(); const ap=hh>=12?'PM':'AM'; let h=hh%12; if(h===0) h=12; return h+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap; }
 function _mapAutoTime(name, route, date){
   const vt = MAP_ROUTE_TO_VISIT[route]; const nn=_mapNorm(name);
   const cand = records.filter(r=> r.timestamp && r.timestamp.slice(0,10)===date && _mapNorm(r.patient)===nn && r.visitType===vt);
   if(!cand.length) return '';
   cand.sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
-  const d=new Date(cand[0].timestamp); const p=n=>String(n).padStart(2,'0');
-  return p(d.getHours())+':'+p(d.getMinutes());
+  return _map12h(new Date(cand[0].timestamp));
 }
 function mapCellTime(name, route, date){
   const key=route+'|'+date+'|'+name;
@@ -1427,38 +1428,52 @@ function mapRemove(i){
   if(!confirm('Remove '+(list[i].name||'this person')+' from the '+mapCurrentRoute+' list?')) return;
   list.splice(i,1); saveMapRoster(); renderMapLog();
 }
+function mapToggleEdit(){ mapEditMode=!mapEditMode; renderMapLog(); }
 function renderMapLog(){
   const roster=getMapRoster(); const routes=['R1AM','R1PM','R2PM'];
   if(routes.indexOf(mapCurrentRoute)<0) mapCurrentRoute='R1AM';
   const el=document.getElementById('screen-maplog'); if(!el) return;
-  const list=roster[mapCurrentRoute]||[];
+  const list=roster[mapCurrentRoute]||[]; const ed=mapEditMode;
   let h='<h2 style="margin-bottom:2px;">MAP Services Log</h2>';
-  h+='<p style="font-size:12px;color:#888;margin:0 0 12px;">Robin\'s Pharmacy &middot; Site ID Y81 &middot; manager only. Times fill in as staff sign off; edit anything, then print.</p>';
+  h+='<p style="font-size:12px;color:#888;margin:0 0 12px;">Robin\'s Pharmacy &middot; Site ID Y81 &middot; manager only. Times fill in as staff sign off.</p>';
   h+='<div style="display:flex;gap:8px;margin-bottom:12px;">';
   routes.forEach(r=>{ h+='<button onclick="mapSetRoute(\''+r+'\')" style="flex:1;padding:9px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid #A22C89;'+(r===mapCurrentRoute?'background:#A22C89;color:#fff;':'background:#fff;color:#A22C89;')+'">'+r+'</button>'; });
   h+='</div>';
   h+='<label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Date of service</label>';
   h+='<input type="date" id="map-date" value="'+_mapAttr(mapCurrentDate)+'" onchange="mapSetDate(this.value)" style="margin-bottom:14px;">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+  h+='<span style="font-size:12px;color:'+(ed?'#c0392b':'#999')+';font-weight:'+(ed?'700':'400')+';">'+(ed?'Editing \u2014 changes save automatically':'View only \u2014 tap Edit to change')+'</span>';
+  h+='<button onclick="mapToggleEdit()" style="padding:7px 16px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid '+(ed?'#1D9E75':'#A22C89')+';background:'+(ed?'#1D9E75':'#fff')+';color:'+(ed?'#fff':'#A22C89')+';">'+(ed?'\u2713 Done':'\u270e Edit')+'</button>';
+  h+='</div>';
   h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">';
   h+='<thead><tr>'
-    +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;width:66px;">Time</th>'
+    +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;width:78px;">Time</th>'
     +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;">Patient Name</th>'
     +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;width:104px;">PHN</th>'
     +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;">Service provided</th>'
-    +'<th style="border-bottom:2px solid #eee;width:30px;"></th></tr></thead><tbody>';
+    +(ed?'<th style="border-bottom:2px solid #eee;width:30px;"></th>':'')+'</tr></thead><tbody>';
   const istyle='width:100%;padding:5px 6px;font-size:13px;border:1px solid #e2e2e2;border-radius:5px;box-sizing:border-box;font-family:inherit;';
   list.forEach((p,i)=>{
     const t=mapCellTime(p.name, mapCurrentRoute, mapCurrentDate);
-    h+='<tr>'
-     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(t)+'" placeholder="\u2014" onchange="mapEditTime('+i+',this.value)" style="'+istyle+'text-align:center;color:#185FA5;font-weight:600;"></td>'
-     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.name)+'" onchange="mapEditField('+i+',\'name\',this.value)" style="'+istyle+'"></td>'
-     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.phn)+'" onchange="mapEditField('+i+',\'phn\',this.value)" style="'+istyle+'"></td>'
-     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.service)+'" onchange="mapEditField('+i+',\'service\',this.value)" style="'+istyle+'"></td>'
-     +'<td style="padding:3px 4px;text-align:center;"><button onclick="mapRemove('+i+')" title="Remove" style="border:none;background:none;color:#c0392b;font-size:15px;cursor:pointer;">\u2715</button></td>'
-     +'</tr>';
+    if(ed){
+      h+='<tr>'
+       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(t)+'" placeholder="\u2014" onchange="mapEditTime('+i+',this.value)" style="'+istyle+'text-align:center;color:#185FA5;font-weight:600;"></td>'
+       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.name)+'" onchange="mapEditField('+i+',\'name\',this.value)" style="'+istyle+'"></td>'
+       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.phn)+'" onchange="mapEditField('+i+',\'phn\',this.value)" style="'+istyle+'"></td>'
+       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.service)+'" onchange="mapEditField('+i+',\'service\',this.value)" style="'+istyle+'"></td>'
+       +'<td style="padding:3px 4px;text-align:center;"><button onclick="mapRemove('+i+')" title="Remove" style="border:none;background:none;color:#c0392b;font-size:15px;cursor:pointer;">\u2715</button></td>'
+       +'</tr>';
+    } else {
+      h+='<tr>'
+       +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;text-align:center;color:#185FA5;font-weight:600;">'+(t?_mapAttr(t):'\u2014')+'</td>'
+       +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(p.name)+'</td>'
+       +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(p.phn)+'</td>'
+       +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(p.service)+'</td>'
+       +'</tr>';
+    }
   });
   h+='</tbody></table></div>';
-  h+='<button onclick="mapAdd()" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;border:1.5px dashed #A22C89;background:#fff;color:#A22C89;font-weight:700;font-size:13px;cursor:pointer;">+ Add person to '+mapCurrentRoute+'</button>';
+  if(ed) h+='<button onclick="mapAdd()" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;border:1.5px dashed #A22C89;background:#fff;color:#A22C89;font-weight:700;font-size:13px;cursor:pointer;">+ Add person to '+mapCurrentRoute+'</button>';
   h+='<button class="btn primary" onclick="mapPrint()" style="margin-top:10px;">Print daily report ('+mapCurrentRoute+')</button>';
   el.innerHTML=h;
 }
@@ -1499,7 +1514,7 @@ function showTab(tab){
   if(tab==='settings') renderSettings();
   if(tab==='staffcompliance') renderStaffCompliance();
   if(tab==='working') renderWorking();
-  if(tab==='maplog') renderMapLog();
+  if(tab==='maplog'){ mapEditMode=false; renderMapLog(); }
 }
 
 /* ── Employee autocomplete ── */
