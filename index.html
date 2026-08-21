@@ -304,6 +304,7 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
     <button class="nav-btn" data-tab="working" onclick="showTab('working')">Working</button>
     <button class="nav-btn" data-tab="roster" onclick="showTab('roster')">Roster</button>
     <button class="nav-btn" data-tab="compliance" onclick="showTab('compliance')">Reports</button>
+    <button class="nav-btn" data-tab="maplog" onclick="showTab('maplog')">MAP Log</button>
     <button class="nav-btn" data-tab="settings" onclick="showTab('settings')">Settings</button>
   </div>
 
@@ -469,6 +470,8 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
   </div>
 
   <!-- ROSTER -->
+  <div id="screen-maplog" class="screen"></div>
+
   <div id="screen-roster" class="screen">
     <h2>Patient roster</h2>
     <p class="sub">98 patients pre-loaded · sorted A–Z by last name</p>
@@ -838,6 +841,7 @@ function applyRoleAccess(){
     if(tab==='roster'){ b.style.display=isManager?'block':'none'; return; }
     if(tab==='compliance'){ b.style.display=isManager?'block':'none'; return; }
     if(tab==='settings'){ b.style.display=isManager?'block':'none'; return; }
+    if(tab==='maplog'){ b.style.display=isManager?'block':'none'; return; }
     if(tab==='missed'){ b.style.display='block'; return; }
   });
   // Show logout button
@@ -935,7 +939,7 @@ function doLogout(){
   // Hide manager-only nav tabs immediately
   document.querySelectorAll('.nav-btn').forEach(b=>{
     const tab = b.getAttribute('data-tab');
-    if(['roster','records','compliance','settings'].includes(tab)){
+    if(['roster','records','compliance','settings','maplog'].includes(tab)){
       b.style.display='none';
     }
   });
@@ -1055,6 +1059,12 @@ async function load() {
       if(offSnap.exists() && offSnap.data().pin){
         safeSetItem(OFFICE_PIN_KEY, offSnap.data().pin);
       }
+      try{
+        const mrSnap = await window._getDoc(window._doc(window._db,'app_settings','map_roster'));
+        if(mrSnap.exists() && mrSnap.data().roster){ mapRoster = mrSnap.data().roster; }
+        const mtSnap = await window._getDoc(window._doc(window._db,'app_settings','map_times'));
+        if(mtSnap.exists() && mtSnap.data().times){ mapTimes = mtSnap.data().times; }
+      }catch(e){ console.error('[load] MAP log read failed:', e); }
       // ── One-time PIN migration ────────────────────────────────────────
       // Copy every current staff member's effective PIN into Firestore so the
       // hardcoded default PINs can later be removed from the public source.
@@ -1371,9 +1381,108 @@ function isToday(iso){ return new Date(iso).toDateString()===new Date().toDateSt
 function isThisWeek(iso){ return (new Date()-new Date(iso))<7*86400000; }
 function esc(s){ return (s||'').replace(/'/g,"\\'"); }
 
-/* ── Navigation ── */
+/* ── MAP Services Log (manager only) ── */
+const MAP_ROSTER_DEFAULT = {"R1AM":[{"name":"Jolie Allen","phn":"9141076423","service":"Supervised aripiprazole"},{"name":"Warren Gerein","phn":"9794625396","service":"Supervised escitalopram"},{"name":"Twyla Jackson","phn":"9069638479","service":"Supervised paliperidone"},{"name":"Lisa Liu","phn":"9096976777","service":"Supervised flupenthixol"},{"name":"Bella Manglallan","phn":"9148252757","service":"Supervised insulin"},{"name":"Mary O'Flaherty Bruce","phn":"9873486277","service":"Supervised clonazepam"}],"R1PM":[{"name":"Kourosh Abadi","phn":"9124786428","service":"Supervised clozapine"},{"name":"Mark Allan","phn":"9092673251","service":"Supervised mirtazapine"},{"name":"Serafina Audia","phn":"9026387489","service":"Supervised valproic acid"},{"name":"James Bishop","phn":"9896952419","service":"Supervised clozapine"},{"name":"Karen Bruce","phn":"9812752907","service":"Supervised loxapine"},{"name":"Le Chun Chan","phn":"9854371264","service":"Supervised mirtazapine"},{"name":"Douglas Chin","phn":"9896482872","service":"Supervised olanzapine"},{"name":"Ching Chou","phn":"9098124193","service":"Supervised clozapine"},{"name":"Levon Culbertson-Bottomley","phn":"9146136404","service":"Supervised clozapine"},{"name":"Theresa Duggan","phn":"9146520411","service":"Supervised lithium"},{"name":"Valerie Elliott","phn":"9891862102","service":"Supervised clozapine"},{"name":"Rita Focker","phn":"9086136236","service":"Supervised lamotrigine"},{"name":"Tony Harry","phn":"9896345363","service":"Supervised clozapine"},{"name":"Victor Jean","phn":"9825903687","service":"Supervised olanzapine"},{"name":"Doris Johnson","phn":"9034378244","service":"Supervised risperidone"},{"name":"Wendy Jones","phn":"9085714674","service":"Supervised quetiapine"},{"name":"Nader Kamalfar","phn":"9891052108","service":"Supervised quetiapine"},{"name":"Brenda Kwan","phn":"9015876341","service":"Supervised lithium"},{"name":"Joseph Lee","phn":"9078240635","service":"Supervised clozapine"},{"name":"Yu Hung Li","phn":"9126275351","service":"Supervised clozapine"},{"name":"Brian MacMillan","phn":"9732089321","service":"Supervised lithium"},{"name":"Michael McLean","phn":"9124736795","service":"Supervised clozapine"},{"name":"Shauna McQueen","phn":"9082342738","service":"Supervised quetiapine"},{"name":"Raymond Morin","phn":"9141048764","service":"Supervised clozapine"},{"name":"Adriano Pallotto","phn":"9035618255","service":"Supervised olanzapine"},{"name":"Francois Peinhof","phn":"9047432866","service":"Supervised olanzapine"},{"name":"Naomi Seki","phn":"9030754973","service":"Supervised quetiapine"},{"name":"Robert Stefaniczan","phn":"9073459582","service":"Supervised quetiapine"},{"name":"Mary Walker","phn":"9136231769","service":"Supervised olanzapine"},{"name":"Sandra Warkentine","phn":"9876019186","service":"Supervised clozapine"},{"name":"Annique Wood","phn":"9125879105","service":"Supervised loxapine"}],"R2PM":[{"name":"Cheryl Brooks","phn":"9030835044","service":"Supervised clozapine"},{"name":"Marian de Guzman","phn":"9837125476","service":"Supervised clozapine"},{"name":"Bill Deligiannidis","phn":"9078708737","service":"Supervised lithium"},{"name":"Borys Denysenko","phn":"9691632893","service":"Supervised lithium"},{"name":"Uy Diep","phn":"9105930874","service":"Supervised olanzapine"},{"name":"Marivic Domingo","phn":"9897084211","service":"Supervised clozapine"},{"name":"Sokhim Em","phn":"9103713151","service":"Supervised clozapine"},{"name":"Marc Estrin","phn":"9031748585","service":"Supervised clozapine"},{"name":"Jean-Paul Feder","phn":"9023641239","service":"Supervised divalproex"},{"name":"Malcolm George","phn":"9087098042","service":"Supervised brivaracetam"},{"name":"Habib Hajivalizadeh","phn":"9143548781","service":""},{"name":"Jin Huang","phn":"9828345142","service":"Supervised olanzapine"},{"name":"Ting-Chun Huang","phn":"9736246388","service":"Supervised clozapine"},{"name":"Anna Jang","phn":"9017543675","service":"Supervised risperidone"},{"name":"Manvir Johal","phn":"9143845141","service":"Supervised zuclopenthixol"},{"name":"Phyllis Jung","phn":"9031848011","service":"Supervised clozapine"},{"name":"Matthew Knapp","phn":"9102398422","service":"Supervised escitalopram"},{"name":"Celeste Larocque","phn":"9127090854","service":"Supervised olanzapine"},{"name":"David Leblanc","phn":"9875979622","service":"Supervised mirtazapine"},{"name":"Yiu Fai Lee","phn":"9147543207","service":"Supervised clozapine"},{"name":"Wai Leong Leong","phn":"9134854795","service":"Supervised divalproex"},{"name":"Aldo Lepore","phn":"9094354361","service":"Supervised clozapine"},{"name":"Matthew Light","phn":"9872073165","service":"Supervised clozapine"},{"name":"Robin Long","phn":"9084068786","service":"Supervised lithium"},{"name":"Caltrin Lucich","phn":"9826814655","service":"Supervised risperidone"},{"name":"Benito Macalanda","phn":"9701361899","service":"Supervised aripiprazole"},{"name":"Ian Martin","phn":"9739631768","service":""},{"name":"Russell Mathias","phn":"9016373975","service":"Supervised olanzapine"},{"name":"Toby Mukai","phn":"9108659788","service":"Supervised lithium"},{"name":"Michael Obradovic","phn":"9079746414","service":"Supervised clozapine"},{"name":"Kulwinder Purewal","phn":"9891894037","service":"Supervised olanzapine"},{"name":"Jodie Robson","phn":"9071357033","service":"Supervised quetiapine"},{"name":"Emelina Rono","phn":"9874213094","service":"Supervised lithium"},{"name":"Chloe Strainge","phn":"9075951043","service":"Supervised aripiprazole"},{"name":"Nhut-Quang Thai","phn":"9128318757","service":"Supervised lithium"},{"name":"Rosemary Tomei","phn":"9096096572","service":"Supervised clozapine"},{"name":"Salah Uddin","phn":"9823910576","service":"Supervised quetiapine"},{"name":"Nathan Van Roon","phn":"9701752884","service":"Supervised risperidone"},{"name":"Jarvis Wallace","phn":"9109519591","service":"Supervised clozapine"},{"name":"Alvin Wesley","phn":"9105834693","service":"Supervised clozapine"},{"name":"Zhi Hua Xu","phn":"9149040152","service":"Supervised olanzapine"}]};
+let mapRoster = null;
+let mapTimes = {};
+let mapCurrentRoute = 'R1AM';
+let mapCurrentDate = new Date().toISOString().slice(0,10);
+const MAP_ROUTE_TO_VISIT = {'R1AM':'R1 - AM','R1PM':'R1 - PM','R2PM':'R2 - PM'};
+function _mapAttr(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _mapNorm(s){ return (s||'').toLowerCase().replace(/\([^)]*\)/g,'').replace(/[^a-z0-9]/g,''); }
+function getMapRoster(){ if(!mapRoster) mapRoster = JSON.parse(JSON.stringify(MAP_ROSTER_DEFAULT)); return mapRoster; }
+function saveMapRoster(){ syncDoc('map_roster', {roster: getMapRoster()}, 'MAP roster'); }
+function saveMapTimes(){ syncDoc('map_times', {times: mapTimes}, 'MAP log times'); }
+function _mapAutoTime(name, route, date){
+  const vt = MAP_ROUTE_TO_VISIT[route]; const nn=_mapNorm(name);
+  const cand = records.filter(r=> r.timestamp && r.timestamp.slice(0,10)===date && _mapNorm(r.patient)===nn && r.visitType===vt);
+  if(!cand.length) return '';
+  cand.sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
+  const d=new Date(cand[0].timestamp); const p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes());
+}
+function mapCellTime(name, route, date){
+  const key=route+'|'+date+'|'+name;
+  if(Object.prototype.hasOwnProperty.call(mapTimes,key)) return mapTimes[key];
+  return _mapAutoTime(name, route, date);
+}
+function mapSetRoute(r){ mapCurrentRoute=r; renderMapLog(); }
+function mapSetDate(d){ mapCurrentDate=d; renderMapLog(); }
+function mapEditTime(i,val){
+  const list=getMapRoster()[mapCurrentRoute]; if(!list||!list[i]) return;
+  mapTimes[mapCurrentRoute+'|'+mapCurrentDate+'|'+list[i].name]=(val||'').trim(); saveMapTimes();
+}
+function mapEditField(i,field,val){
+  const list=getMapRoster()[mapCurrentRoute]; if(!list||!list[i]) return;
+  val=(val||'').trim();
+  if(field==='name'){
+    const oldName=list[i].name;
+    Object.keys(mapTimes).forEach(k=>{ const pt=k.split('|'); if(pt[0]===mapCurrentRoute && pt[2]===oldName){ mapTimes[mapCurrentRoute+'|'+pt[1]+'|'+val]=mapTimes[k]; delete mapTimes[k]; } });
+  }
+  list[i][field]=val; saveMapRoster(); if(field==='name') saveMapTimes();
+}
+function mapAdd(){ getMapRoster()[mapCurrentRoute].push({name:'',phn:'',service:''}); saveMapRoster(); renderMapLog(); }
+function mapRemove(i){
+  const list=getMapRoster()[mapCurrentRoute]; if(!list||!list[i]) return;
+  if(!confirm('Remove '+(list[i].name||'this person')+' from the '+mapCurrentRoute+' list?')) return;
+  list.splice(i,1); saveMapRoster(); renderMapLog();
+}
+function renderMapLog(){
+  const roster=getMapRoster(); const routes=['R1AM','R1PM','R2PM'];
+  if(routes.indexOf(mapCurrentRoute)<0) mapCurrentRoute='R1AM';
+  const el=document.getElementById('screen-maplog'); if(!el) return;
+  const list=roster[mapCurrentRoute]||[];
+  let h='<h2 style="margin-bottom:2px;">MAP Services Log</h2>';
+  h+='<p style="font-size:12px;color:#888;margin:0 0 12px;">Robin\'s Pharmacy &middot; Site ID Y81 &middot; manager only. Times fill in as staff sign off; edit anything, then print.</p>';
+  h+='<div style="display:flex;gap:8px;margin-bottom:12px;">';
+  routes.forEach(r=>{ h+='<button onclick="mapSetRoute(\''+r+'\')" style="flex:1;padding:9px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid #A22C89;'+(r===mapCurrentRoute?'background:#A22C89;color:#fff;':'background:#fff;color:#A22C89;')+'">'+r+'</button>'; });
+  h+='</div>';
+  h+='<label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Date of service</label>';
+  h+='<input type="date" id="map-date" value="'+_mapAttr(mapCurrentDate)+'" onchange="mapSetDate(this.value)" style="margin-bottom:14px;">';
+  h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  h+='<thead><tr>'
+    +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;width:66px;">Time</th>'
+    +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;">Patient Name</th>'
+    +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;width:104px;">PHN</th>'
+    +'<th style="text-align:left;padding:6px 4px;border-bottom:2px solid #eee;">Service provided</th>'
+    +'<th style="border-bottom:2px solid #eee;width:30px;"></th></tr></thead><tbody>';
+  const istyle='width:100%;padding:5px 6px;font-size:13px;border:1px solid #e2e2e2;border-radius:5px;box-sizing:border-box;font-family:inherit;';
+  list.forEach((p,i)=>{
+    const t=mapCellTime(p.name, mapCurrentRoute, mapCurrentDate);
+    h+='<tr>'
+     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(t)+'" placeholder="\u2014" onchange="mapEditTime('+i+',this.value)" style="'+istyle+'text-align:center;color:#185FA5;font-weight:600;"></td>'
+     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.name)+'" onchange="mapEditField('+i+',\'name\',this.value)" style="'+istyle+'"></td>'
+     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.phn)+'" onchange="mapEditField('+i+',\'phn\',this.value)" style="'+istyle+'"></td>'
+     +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.service)+'" onchange="mapEditField('+i+',\'service\',this.value)" style="'+istyle+'"></td>'
+     +'<td style="padding:3px 4px;text-align:center;"><button onclick="mapRemove('+i+')" title="Remove" style="border:none;background:none;color:#c0392b;font-size:15px;cursor:pointer;">\u2715</button></td>'
+     +'</tr>';
+  });
+  h+='</tbody></table></div>';
+  h+='<button onclick="mapAdd()" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;border:1.5px dashed #A22C89;background:#fff;color:#A22C89;font-weight:700;font-size:13px;cursor:pointer;">+ Add person to '+mapCurrentRoute+'</button>';
+  h+='<button class="btn primary" onclick="mapPrint()" style="margin-top:10px;">Print daily report ('+mapCurrentRoute+')</button>';
+  el.innerHTML=h;
+}
+function mapPrint(){
+  const list=getMapRoster()[mapCurrentRoute]||[];
+  const dlabel=new Date(mapCurrentDate+'T00:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'});
+  let rows='';
+  list.forEach(p=>{ const t=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate);
+    rows+='<tr><td class="tm">'+_mapAttr(t)+'</td><td>'+_mapAttr(p.name)+'</td><td>'+_mapAttr(p.phn)+'</td><td>'+_mapAttr(p.service)+'</td></tr>'; });
+  const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>MAP Services Log '+mapCurrentRoute+' '+dlabel+'</title>'
+   +'<style>body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:22px;}h1{font-size:18px;margin:0 0 6px;}.hdr{font-size:13px;line-height:1.7;margin-bottom:12px;}.sig{font-size:13px;line-height:2.4;margin:8px 0 16px;}table{width:100%;border-collapse:collapse;font-size:13px;}th,td{border:1px solid #000;padding:6px 8px;text-align:left;}th{background:#eee;}td.tm{width:66px;text-align:center;}@media print{@page{margin:14mm;}}</style>'
+   +'</head><body><h1>MAP Services Log</h1>'
+   +'<div class="hdr">Pharmacy Name: Robin\'s Pharmacy<br>Pharmacy Site ID: Y81<br>Date of Service: '+dlabel+'<br>Route: '+mapCurrentRoute+'</div>'
+   +'<div class="sig">Name &amp; role of health professional: ____________________________________<br>Health professional signature: ____________________________________</div>'
+   +'<table><thead><tr><th>Time</th><th>Patient Name</th><th>PHN</th><th>Service provided</th></tr></thead><tbody>'+rows+'</tbody></table>'
+   +'</body></html>';
+  const win=window.open('','_blank'); if(!win){ alert('Please allow pop-ups to print.'); return; }
+  win.document.write(html); win.document.close();
+  setTimeout(()=>{ win.print(); },500);
+}
+
+/* \u2500\u2500 Navigation \u2500\u2500 */
 function showTab(tab){
-  ['collect','roster','records','compliance','settings','missed','staffcompliance','working'].forEach(t=>{
+  ['collect','roster','records','compliance','settings','missed','staffcompliance','working','maplog'].forEach(t=>{
     document.getElementById('screen-'+t).classList.toggle('active',t===tab);
   });
   // Remove active from all, then add only to visible matching tab
@@ -1390,6 +1499,7 @@ function showTab(tab){
   if(tab==='settings') renderSettings();
   if(tab==='staffcompliance') renderStaffCompliance();
   if(tab==='working') renderWorking();
+  if(tab==='maplog') renderMapLog();
 }
 
 /* ── Employee autocomplete ── */
