@@ -718,8 +718,12 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
     <p id="rec-edit-sub" style="font-size:12px;color:#888;margin:4px 0 12px;"></p>
     <label style="margin-top:0;">Route / visit type</label>
     <select id="rec-edit-route" style="margin-bottom:14px;"></select>
+    <label style="margin-top:0;">Visit date &amp; time</label>
+    <input type="datetime-local" id="rec-edit-datetime" style="margin-bottom:14px;">
     <div id="rec-edit-slots"></div>
-    <p style="font-size:11px;color:#888;margin-top:10px;">Change the route above and/or tap W / C / M to set a slot (tap the active one again to clear). Saved as a manager correction — no signature is collected.</p>
+    <label style="margin-top:0;">Notes</label>
+    <textarea id="rec-edit-notes" rows="2" placeholder="Add or edit notes…" style="margin-bottom:6px;width:100%;box-sizing:border-box;font-family:inherit;"></textarea>
+    <p style="font-size:11px;color:#888;margin-top:10px;">Adjust the date/time, route, notes, and/or tap W / C / M to set a slot (tap the active one again to clear). Saved as a manager correction — no signature is collected.</p>
     <button class="btn primary" onclick="saveVisitRecordEdit()">Save changes</button>
     <button class="btn ghost" onclick="closeRecEdit()">Cancel</button>
     <div id="rec-edit-msg" class="msg"></div>
@@ -1362,6 +1366,7 @@ function savePSigs(){
 function lastName(name){ const p=(name||'').trim().split(' '); return p[p.length-1].toLowerCase(); }
 function sortPatients(arr){ return [...arr].sort((a,b)=>lastName(a.name).localeCompare(lastName(b.name))); }
 function formatDate(iso){ const d=new Date(iso); return d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}); }
+function _toLocalInput(iso){ const d=new Date(iso); if(isNaN(d.getTime())) return ''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
 function isToday(iso){ return new Date(iso).toDateString()===new Date().toDateString(); }
 function isThisWeek(iso){ return (new Date()-new Date(iso))<7*86400000; }
 function esc(s){ return (s||'').replace(/'/g,"\\'"); }
@@ -2756,7 +2761,7 @@ function renderCompliance(){
       const lastInit=parts.length>1?parts[parts.length-1][0]+'.':'';
       return first+' '+lastInit;
     }).join(', ');
-    html+=`<div class="record" onclick="openPatientModal('${encodeURIComponent(p.name)}')">
+    html+=`<div class="record" onclick="openPatientModal('${encodeURIComponent(p.name).replace(/'/g,'%27')}')">
       <div class="record-name">${p.name}</div>
       ${p.mht?`<div class="record-team">${p.mht}</div>`:''}
       ${p.clozapine?`<span class="clozapine-badge">⚠ Clozapine</span>`:''}
@@ -3275,7 +3280,7 @@ function openPatientModal(enc){
       html+='</div>';
       html+='</div>';
       if(slotHtml) html+='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">'+slotHtml+'</div>';
-      if(r.editedBy) html+='<div style="font-size:10px;color:#A22C89;margin-top:4px;">\u270e Edited by '+r.editedBy+(r.editedAt?' \u00b7 '+formatDate(r.editedAt):'')+'</div>';
+      // edit annotation intentionally not shown (manager request)
       if(r.signature && r.signature.length > 1000) html+='<button data-rid="'+r.id+'" onclick="event.stopPropagation();viewSig(this.dataset.rid)" style="margin-top:6px;background:#E6F1FB;border:none;color:#185FA5;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;">&#9998; View signature</button>';
       if(r.unableToSign) html+='<div style="font-size:11px;color:#B45309;background:#FFF9E6;padding:4px 10px;border-radius:8px;margin-top:4px;">⚠ Patient unable to sign: '+r.unableToSign+'</div>';
       else html+='<div style="font-size:10px;color:#aaa;margin-top:4px;">No signature &mdash; missed or carried</div>';
@@ -3327,6 +3332,8 @@ function editVisitRecord(id){
   const _opts=_routes.indexOf(_cur)>=0 ? _routes.slice() : [_cur].concat(_routes);
   const _rsel=document.getElementById('rec-edit-route');
   if(_rsel) _rsel.innerHTML=_opts.map(function(r){return '<option value="'+r+'"'+(r===_cur?' selected':'')+'>'+r+'</option>';}).join('');
+  const _dtEl=document.getElementById('rec-edit-datetime'); if(_dtEl) _dtEl.value=_toLocalInput(rec.timestamp);
+  const _ntEl=document.getElementById('rec-edit-notes'); if(_ntEl) _ntEl.value=rec.notes||'';
   renderRecEditSlots();
   document.getElementById('rec-edit-modal').style.display='flex';
 }
@@ -3362,8 +3369,11 @@ function saveVisitRecordEdit(){
   rec.medSchedule = {..._recEditSchedule};
   const _newRoute = document.getElementById('rec-edit-route') ? document.getElementById('rec-edit-route').value : '';
   if(_newRoute) rec.visitType = _newRoute;
-  rec.editedBy = (currentRole==='manager') ? ('Manager ('+currentUser+')') : (currentUser||'Staff');
-  rec.editedAt = new Date().toISOString();
+  const _dtVal = document.getElementById('rec-edit-datetime') ? document.getElementById('rec-edit-datetime').value : '';
+  if(_dtVal){ const _d=new Date(_dtVal); if(!isNaN(_d.getTime())) rec.timestamp = _d.toISOString(); }
+  const _ntEl = document.getElementById('rec-edit-notes');
+  if(_ntEl) rec.notes = _ntEl.value.trim();
+  // No "manager edited" annotation is recorded, per manager request.
   saveRec();
   saveRecFirebase(rec);   // overwrites the visit document with the corrected schedule
   document.getElementById('rec-edit-modal').style.display='none';
