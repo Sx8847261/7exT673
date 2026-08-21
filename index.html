@@ -368,12 +368,6 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
       </div>
     </div>
 
-    <label>Program</label>
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button class="program-btn active" id="prog-mmp" onclick="selectProgram('MMP')">MMP</button>
-      <button class="program-btn" id="prog-map" onclick="selectProgram('MAP')">MAP</button>
-    </div>
-
     <label>Patient</label>
     <div class="autocomplete">
       <input type="text" id="pat-name" placeholder="Type last name to search..." autocomplete="off" oninput="showAC()" onblur="setTimeout(hideAC,200)">
@@ -491,10 +485,6 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
   <div id="screen-records" class="screen">
     <h2>Signature records</h2>
     <p class="sub">Search a patient to view their records and signatures</p>
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
-      <button class="program-btn active" id="rec-prog-mmp" onclick="recSelectProgram('MMP')">MMP</button>
-      <button class="program-btn" id="rec-prog-map" onclick="recSelectProgram('MAP')">MAP</button>
-    </div>
     <div class="filter-row">
       <input type="text" id="search-input" placeholder="Type patient name..." oninput="">
     </div>
@@ -532,10 +522,6 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
   <div id="screen-staffcompliance" class="screen">
     <h2>Compliance</h2>
     <p class="sub">View last 30 days for any patient</p>
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button class="program-btn active" id="sc-prog-mmp" onclick="scSelectProgram('MMP')">MMP</button>
-      <button class="program-btn" id="sc-prog-map" onclick="scSelectProgram('MAP')">MAP</button>
-    </div>
     <div class="autocomplete" style="margin-bottom:14px;">
       <input type="text" id="sc-pat-name" placeholder="Type patient last name..." autocomplete="off" oninput="showSCAC()" onblur="setTimeout(hideSCAC,200)">
       <div id="sc-ac-list" class="ac-list" style="display:none;"></div>
@@ -674,17 +660,6 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
     <input type="text" id="edit-pat-name" placeholder="First Last">
     <label>Mental health team</label>
     <input type="text" id="edit-pat-mht" placeholder="Team name">
-
-    <label>Program</label>
-    <div style="display:flex;gap:12px;margin-top:6px;margin-bottom:14px;">
-      <label style="margin:0;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#1a1a1a;">
-        <input type="checkbox" id="edit-prog-mmp" style="width:18px;height:18px;margin:0;"> MMP
-      </label>
-      <label style="margin:0;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#1a1a1a;">
-        <input type="checkbox" id="edit-prog-map" style="width:18px;height:18px;margin:0;"> MAP
-      </label>
-    </div>
-    <p style="font-size:11px;color:#888;margin-top:-10px;margin-bottom:10px;">Patient can be in both programs</p>
 
     <label>Controlled medications</label>
     <div style="display:flex;align-items:center;gap:12px;margin-top:6px;margin-bottom:6px;">
@@ -1570,8 +1545,7 @@ function showAC(){
   const list=document.getElementById('ac-list');
   if(!q){ list.style.display='none'; return; }
   const matches=sortPatients(patients).filter(p=>
-    (p.name.toLowerCase().includes(q)||(p.mht||'').toLowerCase().includes(q)) &&
-    (p.programs||['MMP']).includes(selectedProgram)
+    (p.name.toLowerCase().includes(q)||(p.mht||'').toLowerCase().includes(q))
   ).slice(0,10);
   if(!matches.length){ list.style.display='none'; return; }
   list.innerHTML=matches.map(p=>{
@@ -1779,8 +1753,7 @@ function showSCAC(){
   const list = document.getElementById('sc-ac-list');
   if(q.length < 1){ list.style.display='none'; return; }
   const matches = sortPatients(patients.filter(p=>
-    p.name.toLowerCase().includes(q) &&
-    (p.programs||['MMP']).includes(scSelectedProgram)
+    p.name.toLowerCase().includes(q)
   )).slice(0,8);
   if(!matches.length){ list.style.display='none'; return; }
   list.innerHTML = matches.map(p=>`<div class="ac-item" onmousedown="scSelectPatient('${esc(p.name)}')">${p.name}${p.mht?`<span class='ac-sub'>${p.mht}</span>`:''}</div>`).join('');
@@ -2716,11 +2689,6 @@ function openEditPatient(name){
   document.getElementById('edit-pat-clozapine').checked=pat.clozapine||false;
   document.getElementById('edit-pat-highrisk').value=(pat.highRisk||[]).join(', ');
 
-  // Load programs
-  const progs=pat.programs||['MMP'];
-  document.getElementById('edit-prog-mmp').checked=progs.includes('MMP');
-  document.getElementById('edit-prog-map').checked=progs.includes('MAP');
-
   document.getElementById('edit-pat-original').value=pat.name;
   document.getElementById('edit-msg').textContent=''; document.getElementById('edit-msg').className='msg';
   document.getElementById('edit-modal').style.display='flex';
@@ -2756,10 +2724,7 @@ function saveEditPatient(){
   const newControlledCount=newControlled?Math.max(0,parseInt(document.getElementById('edit-pat-controlled-count').value)||0):0;
   const newClozapine=document.getElementById('edit-pat-clozapine').checked;
   const newHighRisk=document.getElementById('edit-pat-highrisk').value.split(',').map(s=>s.trim()).filter(s=>s.length>0);
-  const newProgs=[];
-  if(document.getElementById('edit-prog-mmp').checked) newProgs.push('MMP');
-  if(document.getElementById('edit-prog-map').checked) newProgs.push('MAP');
-  patients[idx]={...patients[idx],name:newName,mht:newMht,controlled:newControlled,controlledCount:newControlledCount,clozapine:newClozapine,highRisk:newHighRisk,programs:newProgs.length?newProgs:['MMP']}; savePat();
+  patients[idx]={...patients[idx],name:newName,mht:newMht,controlled:newControlled,controlledCount:newControlledCount,clozapine:newClozapine,highRisk:newHighRisk}; savePat();
   document.getElementById('edit-modal').style.display='none'; renderRoster();
 }
 function renderRoster(){
@@ -2784,9 +2749,6 @@ function renderRoster(){
           ${p.clozapine?`<span class="clozapine-badge">⚠ Clozapine</span>`:''}
           ${(p.highRisk&&p.highRisk.length>0)?p.highRisk.map(m=>`<span class="highrisk-badge">⚠ ${m}</span>`).join(''):''}
 
-          <div style="margin-top:4px;">
-            ${(p.programs||['MMP']).map(pr=>`<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;margin-right:4px;background:${pr==='MMP'?'#E6F1FB':'#EAF3DE'};color:${pr==='MMP'?'#185FA5':'#3B6D11'};">${pr}</span>`).join('')}
-          </div>
           <div class="patient-sub" style="margin-top:3px;">${sc} visit${sc!==1?'s':''} · ${hasSaved?'<span style="color:#3B6D11">Sig ✓</span>':'No sig yet'}</div>
         </div>
         <div class="patient-row-actions">
@@ -2835,7 +2797,7 @@ function renderRecords(){
   const filtered=records.filter(r=>{
     const matchesSearch = r.patient.toLowerCase().includes(q)||(r.mht||'').toLowerCase().includes(q);
     const pat = patients.find(p=>p.name===r.patient);
-    const matchesProg = (pat?.programs||['MMP']).includes(recSelectedProgram);
+    const matchesProg = true;
     return matchesSearch && matchesProg;
   });
 
