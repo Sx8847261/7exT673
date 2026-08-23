@@ -1365,7 +1365,7 @@ let mapCurrentDate = _mapLocalDate(new Date());
 let mapEditMode = false;
 const MAP_ROUTE_TO_VISIT = {'R1AM':'R1 - AM','R1PM':'R1 - PM','R2PM':'R2 - PM'};
 function _mapAttr(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function _mapNorm(s){ return (s||'').toLowerCase().replace(/\([^)]*\)/g,'').replace(/[^a-z0-9]/g,''); }
+function _mapNorm(s){ return (s||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(t=>t.length>1).join(''); }
 function getMapRoster(){ if(!mapRoster) mapRoster = JSON.parse(JSON.stringify(MAP_ROSTER_DEFAULT)); return mapRoster; }
 function saveMapRoster(){ syncDoc('map_roster', {roster: getMapRoster()}, 'MAP roster'); }
 function saveMapTimes(){ syncDoc('map_times', {times: mapTimes}, 'MAP log times'); }
