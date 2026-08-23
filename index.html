@@ -1371,10 +1371,21 @@ function saveMapRoster(){ syncDoc('map_roster', {roster: getMapRoster()}, 'MAP r
 function saveMapTimes(){ syncDoc('map_times', {times: mapTimes}, 'MAP log times'); }
 function _mapLocalDate(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 function _map12h(d){ let hh=d.getHours(); const ap=hh>=12?'PM':'AM'; let h=hh%12; if(h===0) h=12; return h+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap; }
-function _mapAutoTime(name, route, date){
-  const vt = MAP_ROUTE_TO_VISIT[route]; const nn=_mapNorm(name);
-  const cand = records.filter(r=> r.timestamp && _mapLocalDate(new Date(r.timestamp))===date && _mapNorm(r.patient)===nn && r.visitType===vt);
-  if(!cand.length) return '';
+const MAP_AM_CUTOFF_HOUR = 13; // before 1:00 PM local = AM sheet, 1:00 PM or later = PM sheet
+function _mapIsAM(sheet){ return /AM$/i.test(sheet||''); }
+function _mapSheetCount(name){ const nn=_mapNorm(name); const r=getMapRoster(); let c=0; Object.keys(r).forEach(sh=>{ if((r[sh]||[]).some(p=>_mapNorm(p.name)===nn)) c++; }); return c; }
+function _mapAutoTime(name, sheet, date){
+  // Route is intentionally ignored — a wrong route pick must not hide a visit.
+  const nn=_mapNorm(name);
+  const all = records.filter(r=> r.timestamp && _mapLocalDate(new Date(r.timestamp))===date && _mapNorm(r.patient)===nn);
+  if(!all.length) return '';
+  const am=_mapIsAM(sheet);
+  const inWindow = all.filter(r=>{ const h=new Date(r.timestamp).getHours(); return am ? h<MAP_AM_CUTOFF_HOUR : h>=MAP_AM_CUTOFF_HOUR; });
+  let cand = inWindow;
+  if(!cand.length){
+    if(_mapSheetCount(name) > 1) return '';   // on both AM & PM sheets: strict time window, no cross-fill
+    cand = all;                               // on a single sheet: fall back to any visit that day
+  }
   cand.sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
   return _map12h(new Date(cand[0].timestamp));
 }
