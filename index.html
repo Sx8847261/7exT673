@@ -1458,7 +1458,10 @@ function renderMapLog(){
   });
   h+='</tbody></table></div>';
   if(ed) h+='<button onclick="mapAdd()" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;border:1.5px dashed #A22C89;background:#fff;color:#A22C89;font-weight:700;font-size:13px;cursor:pointer;">+ Add person to '+mapCurrentRoute+'</button>';
-  h+='<button class="btn primary" onclick="mapPrint()" style="margin-top:10px;">Print daily report ('+mapCurrentRoute+')</button>';
+  h+='<div style="display:flex;gap:8px;margin-top:12px;">';
+  h+='<button class="btn primary" onclick="mapPrint()" style="flex:1;margin-top:0;">Export PDF</button>';
+  h+='<button onclick="mapExportCSV()" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid #1D9E75;background:#fff;color:#0F6E56;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;">Export Excel</button>';
+  h+='</div>';
   el.innerHTML=h;
 }
 function mapPrint(){
@@ -1477,6 +1480,27 @@ function mapPrint(){
   const win=window.open('','_blank'); if(!win){ alert('Please allow pop-ups to print.'); return; }
   win.document.write(html); win.document.close();
   setTimeout(()=>{ win.print(); },500);
+}
+function mapExportCSV(){
+  const list=getMapRoster()[mapCurrentRoute]||[];
+  const dlabel=new Date(mapCurrentDate+'T00:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'});
+  const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const NL='\n';
+  let csv='';
+  csv+=q('MAP Services Log')+NL;
+  csv+=q("Pharmacy Name: Robin's Pharmacy")+NL;
+  csv+=q('Pharmacy Site ID: Y81')+NL;
+  csv+=q('Date of Service: '+dlabel)+NL;
+  csv+=q('Route: '+mapCurrentRoute)+NL;
+  csv+=q('Name & role of health professional:')+NL;
+  csv+=q('Health professional signature:')+NL+NL;
+  csv+=[q('Time'),q('Patient Name'),q('PHN'),q('Service provided')].join(',')+NL;
+  list.forEach(p=>{ const t=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate); csv+=[q(t),q(p.name),q(p.phn),q(p.service)].join(',')+NL; });
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='MAP_'+mapCurrentRoute+'_'+mapCurrentDate+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 /* \u2500\u2500 Navigation \u2500\u2500 */
