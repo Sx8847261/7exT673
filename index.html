@@ -1380,14 +1380,11 @@ function _mapAutoTime(name, sheet, date){
   const all = records.filter(r=> r.timestamp && _mapLocalDate(new Date(r.timestamp))===date && _mapNorm(r.patient)===nn);
   if(!all.length) return '';
   const am=_mapIsAM(sheet);
+  // Strict time window per sheet: AM sheets take only before-1PM visits; PM sheets take only 1:00PM-11:59PM.
   const inWindow = all.filter(r=>{ const h=new Date(r.timestamp).getHours(); return am ? h<MAP_AM_CUTOFF_HOUR : h>=MAP_AM_CUTOFF_HOUR; });
-  let cand = inWindow;
-  if(!cand.length){
-    if(_mapSheetCount(name) > 1) return '';   // on both AM & PM sheets: strict time window, no cross-fill
-    cand = all;                               // on a single sheet: fall back to any visit that day
-  }
-  cand.sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
-  return _map12h(new Date(cand[0].timestamp));
+  if(!inWindow.length) return '';
+  inWindow.sort((a,b)=> new Date(a.timestamp)-new Date(b.timestamp));
+  return _map12h(new Date(inWindow[0].timestamp));
 }
 function mapCellTime(name, route, date){
   const key=route+'|'+date+'|'+name;
