@@ -708,6 +708,16 @@ canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 1
   </div>
 </div>
 
+<div id="map-cell-modal" class="modal-backdrop" style="display:none;" onclick="mapCellBackdrop(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 id="map-cell-title" style="margin-bottom:10px;">Edit</h3>
+    <textarea id="map-cell-input" rows="3" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:17px;padding:12px;border:1.5px solid #A22C89;border-radius:10px;"></textarea>
+    <button class="btn primary" onclick="mapSaveCell()" style="margin-top:12px;">Save</button>
+    <button class="btn ghost" onclick="mapCloseCell()">Cancel</button>
+  </div>
+</div>
+
 <script>
 // ── Pre-loaded patient data from PDF ──
 // Format: {name: "First Last", mht: "", doctor: "Dr. Name", docPhone: ""}
@@ -1412,6 +1422,29 @@ function mapRemove(i){
   if(!confirm('Remove '+(list[i].name||'this person')+' from the '+mapCurrentRoute+' list?')) return;
   list.splice(i,1); saveMapRoster(); renderMapLog();
 }
+let _mapCellIdx=-1, _mapCellField=null;
+function mapOpenCell(i, field){
+  const list=getMapRoster()[mapCurrentRoute]||[]; const p=list[i]; if(!p) return;
+  _mapCellIdx=i; _mapCellField=field;
+  let val, label;
+  if(field==='time'){ val=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate); label='Time'; }
+  else if(field==='phn'){ val=p.phn||''; label='PHN'; }
+  else if(field==='service'){ val=p.service||''; label='Service provided'; }
+  else { val=p.name||''; label='Patient name'; }
+  document.getElementById('map-cell-title').textContent=label+(p.name?' \u2014 '+p.name:'');
+  const ta=document.getElementById('map-cell-input'); ta.value=val;
+  document.getElementById('map-cell-modal').style.display='flex';
+  setTimeout(function(){ try{ ta.focus(); ta.select(); }catch(e){} },60);
+}
+function mapSaveCell(){
+  if(_mapCellIdx<0){ mapCloseCell(); return; }
+  const v=(document.getElementById('map-cell-input').value||'').replace(/\n/g,' ').trim();
+  if(_mapCellField==='time') mapEditTime(_mapCellIdx, v);
+  else mapEditField(_mapCellIdx, _mapCellField, v);
+  mapCloseCell(); renderMapLog();
+}
+function mapCloseCell(){ document.getElementById('map-cell-modal').style.display='none'; _mapCellIdx=-1; _mapCellField=null; }
+function mapCellBackdrop(e){ if(e && e.target && e.target.id==='map-cell-modal') mapCloseCell(); }
 function mapToggleEdit(){ mapEditMode=!mapEditMode; renderMapLog(); }
 function renderMapLog(){
   const roster=getMapRoster(); const routes=['R1AM','R1PM','R2PM'];
@@ -1440,11 +1473,13 @@ function renderMapLog(){
   list.forEach((p,i)=>{
     const t=mapCellTime(p.name, mapCurrentRoute, mapCurrentDate);
     if(ed){
+      const cst='padding:9px 8px;border:1px solid #d9b3cf;border-radius:6px;cursor:pointer;font-size:13px;min-height:18px;word-break:break-word;background:#fff;';
+      const ph='<span style="color:#bbb;">tap to edit</span>';
       h+='<tr>'
-       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(t)+'" placeholder="\u2014" onchange="mapEditTime('+i+',this.value)" style="'+istyle+'text-align:center;color:#185FA5;font-weight:600;"></td>'
-       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.name)+'" onchange="mapEditField('+i+',\'name\',this.value)" style="'+istyle+'"></td>'
-       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.phn)+'" onchange="mapEditField('+i+',\'phn\',this.value)" style="'+istyle+'"></td>'
-       +'<td style="padding:3px 4px;"><input value="'+_mapAttr(p.service)+'" onchange="mapEditField('+i+',\'service\',this.value)" style="'+istyle+'"></td>'
+       +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'time\')" style="'+cst+'text-align:center;color:#185FA5;font-weight:600;">'+(t?_mapAttr(t):ph)+'</div></td>'
+       +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'name\')" style="'+cst+'">'+(p.name?_mapAttr(p.name):ph)+'</div></td>'
+       +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'phn\')" style="'+cst+'">'+(p.phn?_mapAttr(p.phn):ph)+'</div></td>'
+       +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'service\')" style="'+cst+'">'+(p.service?_mapAttr(p.service):ph)+'</div></td>'
        +'<td style="padding:3px 4px;text-align:center;"><button onclick="mapRemove('+i+')" title="Remove" style="border:none;background:none;color:#c0392b;font-size:15px;cursor:pointer;">\u2715</button></td>'
        +'</tr>';
     } else {
