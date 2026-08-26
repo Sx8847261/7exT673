@@ -1387,8 +1387,8 @@ function _mapSheetCount(name){ const nn=_mapNorm(name); const r=getMapRoster(); 
 function _mapAutoTime(name, sheet, date){
   // Route is intentionally ignored — a wrong route pick must not hide a visit.
   const nn=_mapNorm(name);
-  // A missed dose (M) records no time — the slot stays blank so the manager can write it in by hand. W and C do record.
-  const all = records.filter(r=> r.timestamp && _mapLocalDate(new Date(r.timestamp))===date && _mapNorm(r.patient)===nn && Object.values(r.medSchedule||{}).some(function(v){return v==='W'||v==='C';}));
+  // Only a witnessed (W) dose records a time. Missed (M) and carry (C) leave the slot blank — manager can hand-write if needed.
+  const all = records.filter(r=> r.timestamp && _mapLocalDate(new Date(r.timestamp))===date && _mapNorm(r.patient)===nn && Object.values(r.medSchedule||{}).some(function(v){return v==='W';}));
   if(!all.length) return '';
   const am=_mapIsAM(sheet);
   // Strict time window per sheet: AM sheets take only before-1PM visits; PM sheets take only 1:00PM-11:59PM.
