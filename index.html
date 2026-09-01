@@ -1411,6 +1411,17 @@ function mapEditTime(i,val){
 function mapEditField(i,field,val){
   const list=getMapRoster()[mapCurrentRoute]; if(!list||!list[i]) return;
   val=(val||'').trim();
+  if(field==='service'){
+    const entry=list[i];
+    if(!Array.isArray(entry.serviceHist)) entry.serviceHist=[{from:'0000-01-01', value:entry.service||''}];
+    const eff=mapCurrentDate;
+    entry.serviceHist=entry.serviceHist.filter(e=>e.from!==eff);
+    entry.serviceHist.push({from:eff, value:val});
+    entry.serviceHist.sort((a,b)=> a.from<b.from?-1:(a.from>b.from?1:0));
+    entry.service=val;   // convenience "latest" value
+    saveMapRoster();
+    return;
+  }
   if(field==='name'){
     const oldName=list[i].name;
     Object.keys(mapTimes).forEach(k=>{ const pt=k.split('|'); if(pt[0]===mapCurrentRoute && pt[2]===oldName){ mapTimes[mapCurrentRoute+'|'+pt[1]+'|'+val]=mapTimes[k]; delete mapTimes[k]; } });
@@ -1430,9 +1441,11 @@ function mapOpenCell(i, field){
   let val, label;
   if(field==='time'){ val=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate); label='Time'; }
   else if(field==='phn'){ val=p.phn||''; label='PHN'; }
-  else if(field==='service'){ val=p.service||''; label='Service provided'; }
+  else if(field==='service'){ val=mapService(p,mapCurrentDate); label='Service provided'; }
   else { val=p.name||''; label='Patient name'; }
-  document.getElementById('map-cell-title').textContent=label+(p.name?' \u2014 '+p.name:'');
+  let _ttl=label+(p.name?' \u2014 '+p.name:'');
+  if(field==='service') _ttl+='  (from '+mapCurrentDate+' onward)';
+  document.getElementById('map-cell-title').textContent=_ttl;
   const ta=document.getElementById('map-cell-input'); ta.value=val;
   document.getElementById('map-cell-modal').style.display='flex';
   setTimeout(function(){ try{ ta.focus(); ta.select(); }catch(e){} },60);
@@ -1446,6 +1459,18 @@ function mapSaveCell(){
 }
 function mapCloseCell(){ document.getElementById('map-cell-modal').style.display='none'; _mapCellIdx=-1; _mapCellField=null; }
 function mapCellBackdrop(e){ if(e && e.target && e.target.id==='map-cell-modal') mapCloseCell(); }
+function mapService(entry, date){
+  // Returns the "Service provided" that was in effect on `date`. Edits apply from their date forward; past dates keep their value.
+  const h = entry && entry.serviceHist;
+  if(Array.isArray(h) && h.length){
+    let best=null;
+    for(const e of h){ if(e.from<=date && (!best || e.from>best.from)) best=e; }
+    if(best) return best.value;
+    let earliest=h[0]; for(const e of h){ if(e.from<earliest.from) earliest=e; }
+    return earliest.value;
+  }
+  return (entry && entry.service) || '';
+}
 function mapToggleEdit(){ mapEditMode=!mapEditMode; renderMapLog(); }
 function renderMapLog(){
   const roster=getMapRoster(); const routes=['R1AM','R1PM','R2PM'];
@@ -1473,6 +1498,7 @@ function renderMapLog(){
   const istyle='width:100%;padding:5px 6px;font-size:13px;border:1px solid #e2e2e2;border-radius:5px;box-sizing:border-box;font-family:inherit;';
   list.forEach((p,i)=>{
     const t=mapCellTime(p.name, mapCurrentRoute, mapCurrentDate);
+    const sv=mapService(p, mapCurrentDate);
     if(ed){
       const cst='padding:9px 8px;border:1px solid #d9b3cf;border-radius:6px;cursor:pointer;font-size:13px;min-height:18px;word-break:break-word;background:#fff;';
       const ph='<span style="color:#bbb;">tap to edit</span>';
@@ -1480,7 +1506,7 @@ function renderMapLog(){
        +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'time\')" style="'+cst+'text-align:center;color:#185FA5;font-weight:600;">'+(t?_mapAttr(t):ph)+'</div></td>'
        +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'name\')" style="'+cst+'">'+(p.name?_mapAttr(p.name):ph)+'</div></td>'
        +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'phn\')" style="'+cst+'">'+(p.phn?_mapAttr(p.phn):ph)+'</div></td>'
-       +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'service\')" style="'+cst+'">'+(p.service?_mapAttr(p.service):ph)+'</div></td>'
+       +'<td style="padding:3px 4px;"><div onclick="mapOpenCell('+i+',\'service\')" style="'+cst+'">'+(sv?_mapAttr(sv):ph)+'</div></td>'
        +'<td style="padding:3px 4px;text-align:center;"><button onclick="mapRemove('+i+')" title="Remove" style="border:none;background:none;color:#c0392b;font-size:15px;cursor:pointer;">\u2715</button></td>'
        +'</tr>';
     } else {
@@ -1488,7 +1514,7 @@ function renderMapLog(){
        +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;text-align:center;color:#185FA5;font-weight:600;">'+(t?_mapAttr(t):'\u2014')+'</td>'
        +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(p.name)+'</td>'
        +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(p.phn)+'</td>'
-       +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(p.service)+'</td>'
+       +'<td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'+_mapAttr(sv)+'</td>'
        +'</tr>';
     }
   });
@@ -1505,7 +1531,7 @@ function mapPrint(){
   const dlabel=new Date(mapCurrentDate+'T00:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'});
   let rows='';
   list.forEach(p=>{ const t=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate);
-    rows+='<tr><td class="tm">'+_mapAttr(t)+'</td><td>'+_mapAttr(p.name)+'</td><td>'+_mapAttr(p.phn)+'</td><td>'+_mapAttr(p.service)+'</td></tr>'; });
+    rows+='<tr><td class="tm">'+_mapAttr(t)+'</td><td>'+_mapAttr(p.name)+'</td><td>'+_mapAttr(p.phn)+'</td><td>'+_mapAttr(mapService(p,mapCurrentDate))+'</td></tr>'; });
   const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>MAP Services Log '+mapCurrentRoute+' '+dlabel+'</title>'
    +'<style>body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:22px;}h1{font-size:18px;margin:0 0 6px;}.hdr{font-size:13px;line-height:1.7;margin-bottom:12px;}.sig{font-size:13px;line-height:2.4;margin:8px 0 16px;}table{width:100%;border-collapse:collapse;font-size:13px;}th,td{border:1px solid #000;padding:6px 8px;text-align:left;}th{background:#eee;}td.tm{width:66px;text-align:center;}@media print{@page{margin:14mm;}}</style>'
    +'</head><body><h1>MAP Services Log</h1>'
@@ -1531,7 +1557,7 @@ function mapExportCSV(){
   csv+=q('Name & role of health professional:')+NL;
   csv+=q('Health professional signature:')+NL+NL;
   csv+=[q('Time'),q('Patient Name'),q('PHN'),q('Service provided')].join(',')+NL;
-  list.forEach(p=>{ const t=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate); csv+=[q(t),q(p.name),q(p.phn),q(p.service)].join(',')+NL; });
+  list.forEach(p=>{ const t=mapCellTime(p.name,mapCurrentRoute,mapCurrentDate); csv+=[q(t),q(p.name),q(p.phn),q(mapService(p,mapCurrentDate))].join(',')+NL; });
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='MAP_'+mapCurrentRoute+'_'+mapCurrentDate+'.csv';
